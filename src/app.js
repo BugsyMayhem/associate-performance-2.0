@@ -1251,6 +1251,13 @@ function renderModalAssociate360Content() {
 function renderFeedbackStudio() {
   const emptyState = document.getElementById('feedbackEmptyState');
   const contentContainer = document.getElementById('feedbackContentContainer');
+  const btnMobile = document.getElementById('btnOpenMobileCoaching');
+
+  if (btnMobile) {
+    btnMobile.href = feedbackAssociate 
+      ? `coaching.html?associate=${encodeURIComponent(feedbackAssociate)}` 
+      : 'coaching.html';
+  }
 
   if (!feedbackAssociate) {
     if (emptyState) emptyState.style.display = 'block';

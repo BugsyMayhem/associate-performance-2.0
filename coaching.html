@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="1-on-1 Studio">
+  <meta name="theme-color" content="#090D16">
+  <title>1-on-1 Coaching Studio Mobile | Walmart Store #1012</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="mobile-body">
+  <div class="mobile-app">
+    
+    <!-- Top Mobile Sticky App Header -->
+    <header class="m-navbar">
+      <div class="m-nav-top">
+        <div class="m-brand">
+          <div class="m-brand-icon">
+            <i data-lucide="message-square-quote"></i>
+          </div>
+          <div>
+            <div class="m-brand-title">1-on-1 Coaching Studio</div>
+            <div class="m-brand-sub">Walmart #1012 &bull; OPD Fulfillment</div>
+          </div>
+        </div>
+
+        <div class="m-nav-actions">
+          <a href="index.html" class="m-nav-link" title="Open Full Desktop Dashboard">
+            <i data-lucide="monitor"></i>
+            <span>Desktop</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Cloud Sync & Status Strip -->
+      <div class="m-status-strip">
+        <div id="mobileCloudStatusBadge" class="m-status-badge status-cloud">
+          <span class="m-pulse-dot"></span>
+          <span id="mobileCloudStatusText">Connecting Cloud...</span>
+        </div>
+        <div class="m-status-info">
+          <span id="mFilteredCountBadge">Loading Associates...</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Mobile Content Area -->
+    <main class="m-main">
+
+      <!-- Section 1: Associate Selector & Quick Filters -->
+      <section class="m-card m-selector-card">
+        <div class="m-search-wrap">
+          <i data-lucide="search" class="m-search-icon"></i>
+          <input type="text" id="mAssociateSearch" class="m-search-input" placeholder="Search associate name..." autocomplete="off">
+          <button id="btnClearSearch" class="m-clear-btn" style="display: none;" title="Clear search">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+
+        <!-- Quadrant Filter Pills -->
+        <div class="m-quad-pills-row">
+          <button class="m-quad-pill active" data-quad="all">All</button>
+          <button class="m-quad-pill pill-pacesetter" data-quad="pacesetter">🌟 Pacesetters</button>
+          <button class="m-quad-pill pill-speed" data-quad="speed-demon">⚡ Speed</button>
+          <button class="m-quad-pill pill-quality" data-quad="quality-champion">🎯 Quality</button>
+          <button class="m-quad-pill pill-opp" data-quad="opportunity">🛠️ Growth</button>
+        </div>
+
+        <!-- Dropdown Selector -->
+        <div class="m-dropdown-wrap">
+          <select id="mAssociateSelect" class="m-select">
+            <option value="">👤 Choose an Associate to Coach...</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- Section 2: Date Scope & Presets -->
+      <section class="m-card m-date-card">
+        <div class="m-card-label">
+          <i data-lucide="calendar" style="width: 14px; height: 14px; color: var(--accent-cyan);"></i>
+          <span>Evaluation Date Scope:</span>
+        </div>
+
+        <!-- Preset Chips -->
+        <div class="m-preset-chips-row">
+          <button class="m-preset-chip active" data-preset="all">Full Period</button>
+          <button class="m-preset-chip" data-preset="7d">Last 7 Days</button>
+          <button class="m-preset-chip" data-preset="14d">Last 14 Days</button>
+          <button class="m-preset-chip" data-preset="30d">Last 30 Days</button>
+          <button class="m-preset-chip" data-preset="custom">Custom</button>
+        </div>
+
+        <!-- Custom Date Inputs (Collapsible) -->
+        <div id="mCustomDateRow" class="m-custom-date-row" style="display: none;">
+          <input type="date" id="mStartDate" class="m-date-input">
+          <span class="m-date-sep">to</span>
+          <input type="date" id="mEndDate" class="m-date-input">
+        </div>
+      </section>
+
+      <!-- Empty State (No associate selected) -->
+      <section id="mEmptyState" class="m-card m-empty-card">
+        <div class="m-empty-icon">
+          <i data-lucide="user-check"></i>
+        </div>
+        <h3 class="m-empty-title">Select an Associate</h3>
+        <p class="m-empty-desc">
+          Choose any team member above to generate tailored coaching talking points, speed & accuracy analytics, and SMART action goals.
+        </p>
+      </section>
+
+      <!-- Active Feedback Studio Content (Visible when associate selected) -->
+      <div id="mFeedbackContent" style="display: none;">
+        
+        <!-- Profile Banner -->
+        <section class="m-profile-card">
+          <div class="m-profile-header">
+            <div class="m-avatar" id="mAvatar">--</div>
+            <div class="m-profile-info">
+              <h2 id="mAssocName" class="m-assoc-name">Associate Name</h2>
+              <div class="m-badge-row">
+                <span id="mQuadBadge" class="badge badge-pacesetter">Pacesetters</span>
+                <span id="mUtilBadge" class="badge badge-util-primary">Primary Picker</span>
+              </div>
+              <div id="mPeriodSummary" class="m-period-summary">Evaluating 14 shifts</div>
+            </div>
+          </div>
+
+          <div class="m-profile-actions">
+            <button id="btnCopyScriptHeader" class="btn btn-secondary btn-sm" title="Copy coaching script">
+              <i data-lucide="copy"></i>
+              <span>Copy Script</span>
+            </button>
+            <button id="btnPrintReport" class="btn btn-secondary btn-sm" title="Print or share scorecard">
+              <i data-lucide="printer"></i>
+              <span>Scorecard</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- 6 Mobile KPI Cards with Deltas -->
+        <section class="m-kpi-grid">
+          <!-- KPI 1: Active Pick Speed -->
+          <div class="m-kpi-card" style="--kpi-accent: var(--accent-blue);">
+            <div class="m-kpi-head">
+              <span class="m-kpi-title">Pick Speed</span>
+              <span id="mDeltaSpeed" class="m-delta-badge delta-up">+0.0 i/h</span>
+            </div>
+            <div class="m-kpi-val" id="mPickRate">0.0 i/h</div>
+            <div class="m-kpi-sub">Target: 80.0 i/h</div>
+          </div>
+
+          <!-- KPI 2: FTPR Accuracy -->
+          <div class="m-kpi-card" style="--kpi-accent: var(--accent-emerald);">
+            <div class="m-kpi-head">
+              <span class="m-kpi-title">FTPR Accuracy</span>
+              <span id="mDeltaFTPR" class="m-delta-badge delta-up">+0.0%</span>
+            </div>
+            <div class="m-kpi-val" id="mFTPR">0.0%</div>
+            <div class="m-kpi-sub">Target: 94.0%</div>
+          </div>
+
+          <!-- KPI 3: True Shift PPH -->
+          <div class="m-kpi-card" style="--kpi-accent: #10B981;">
+            <div class="m-kpi-head">
+              <span class="m-kpi-title">Shift PPH</span>
+              <span id="mDeltaPPH" class="m-delta-badge delta-neutral">--</span>
+            </div>
+            <div class="m-kpi-val" id="mShiftPPH">--</div>
+            <div class="m-kpi-sub" id="mShiftHoursSub">0 shift hrs</div>
+          </div>
+
+          <!-- KPI 4: Picker Utilization -->
+          <div class="m-kpi-card" style="--kpi-accent: #F59E0B;">
+            <div class="m-kpi-head">
+              <span class="m-kpi-title">Utilization</span>
+              <span id="mDeltaUtil" class="m-delta-badge delta-neutral">--</span>
+            </div>
+            <div class="m-kpi-val" id="mUtilization">--%</div>
+            <div class="m-kpi-sub" id="mNonPickSub">0 non-pick hrs</div>
+          </div>
+
+          <!-- KPI 5: Total Volume -->
+          <div class="m-kpi-card" style="--kpi-accent: var(--accent-purple);">
+            <div class="m-kpi-head">
+              <span class="m-kpi-title">Total Picked</span>
+              <i data-lucide="package" style="width: 14px; height: 14px; color: var(--accent-purple);"></i>
+            </div>
+            <div class="m-kpi-val" id="mTotalPicked">0</div>
+            <div class="m-kpi-sub" id="mShiftsCountSub">0 shifts logged</div>
+          </div>
+
+          <!-- KPI 6: Subs / Nil Picks -->
+          <div class="m-kpi-card" style="--kpi-accent: var(--accent-rose);">
+            <div class="m-kpi-head">
+              <span class="m-kpi-title">Subs / Nil</span>
+              <i data-lucide="alert-triangle" style="width: 14px; height: 14px; color: var(--accent-rose);"></i>
+            </div>
+            <div class="m-kpi-val" id="mSubNil">0 / 0</div>
+            <div class="m-kpi-sub" id="mSubNilPct">0.0% Subs | 0.0% Nil</div>
+          </div>
+        </section>
+
+        <!-- Trend Chart Card -->
+        <section class="m-card m-chart-card">
+          <div class="m-chart-header">
+            <div class="m-chart-title">
+              <i data-lucide="trending-up" style="color: var(--accent-blue); width: 16px; height: 16px;"></i>
+              <span>Weekly Speed & Accuracy Trend</span>
+            </div>
+            <span id="mTrendPointsCount" class="m-chart-sub">Weekly Trend</span>
+          </div>
+          <div class="m-chart-container">
+            <canvas id="mChartTrend"></canvas>
+          </div>
+        </section>
+
+        <!-- Interactive Coaching Accordions -->
+        <div class="m-accordion-group">
+
+          <!-- Accordion 1: Wins & Strengths -->
+          <div class="m-accordion-item open">
+            <button class="m-accordion-header">
+              <div class="m-accordion-title">
+                <i data-lucide="sparkles" style="color: var(--accent-emerald);"></i>
+                <span style="color: var(--accent-emerald);">Demonstrated Strengths & Wins</span>
+              </div>
+              <div class="m-accordion-icon"><i data-lucide="chevron-down"></i></div>
+            </button>
+            <div class="m-accordion-content">
+              <ul id="mStrengthsList" class="m-coaching-list">
+                <!-- Wins injected -->
+              </ul>
+            </div>
+          </div>
+
+          <!-- Accordion 2: Targeted Coaching Points -->
+          <div class="m-accordion-item open">
+            <button class="m-accordion-header">
+              <div class="m-accordion-title">
+                <i data-lucide="target" style="color: var(--accent-amber);"></i>
+                <span style="color: var(--accent-amber);">Targeted Coaching Opportunities</span>
+              </div>
+              <div class="m-accordion-icon"><i data-lucide="chevron-down"></i></div>
+            </button>
+            <div class="m-accordion-content">
+              <ul id="mCoachingList" class="m-coaching-list">
+                <!-- Coaching points injected -->
+              </ul>
+            </div>
+          </div>
+
+          <!-- Accordion 3: 1-on-1 Discussion Script -->
+          <div class="m-accordion-item open">
+            <button class="m-accordion-header">
+              <div class="m-accordion-title">
+                <i data-lucide="message-square" style="color: var(--accent-cyan);"></i>
+                <span style="color: var(--accent-cyan);">1-on-1 Conversation Script</span>
+              </div>
+              <div class="m-accordion-icon"><i data-lucide="chevron-down"></i></div>
+            </button>
+            <div class="m-accordion-content">
+              <div class="m-script-box-wrap">
+                <div class="m-script-bar">
+                  <span style="font-size: 0.78rem; color: var(--text-dim);">Ready for floor 1-on-1 touchpoint:</span>
+                  <button id="btnCopyScriptInline" class="btn btn-secondary btn-sm" style="font-size: 0.75rem;">
+                    <i data-lucide="copy"></i> Copy Script
+                  </button>
+                </div>
+                <div id="mScriptContent" class="m-script-content">
+                  <!-- Script injected -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Accordion 4: SMART Targets & Milestones -->
+          <div class="m-accordion-item open">
+            <button class="m-accordion-header">
+              <div class="m-accordion-title">
+                <i data-lucide="flag" style="color: var(--accent-purple);"></i>
+                <span style="color: var(--accent-purple);">SMART Targets & Milestones</span>
+              </div>
+              <div class="m-accordion-icon"><i data-lucide="chevron-down"></i></div>
+            </button>
+            <div class="m-accordion-content">
+              <div id="mGoalsGrid" class="m-goals-grid">
+                <!-- SMART Goals injected -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Accordion 5: Manager Notes & Agreed Commitments -->
+          <div class="m-accordion-item open">
+            <button class="m-accordion-header">
+              <div class="m-accordion-title">
+                <i data-lucide="edit-3" style="color: var(--text-main);"></i>
+                <span>Manager Coaching Notes & Commitments</span>
+              </div>
+              <div class="m-accordion-icon"><i data-lucide="chevron-down"></i></div>
+            </button>
+            <div class="m-accordion-content">
+              <!-- Quick Note Preset Phrase Tags -->
+              <div class="m-quick-tags-wrap">
+                <span class="m-quick-tags-label">Quick snippets:</span>
+                <div class="m-quick-tags-list">
+                  <button class="m-quick-tag" data-text="Reviewed cart staging and bagging prep.">+ Bag Prep</button>
+                  <button class="m-quick-tag" data-text="Coached on topstock verification before nil-picking.">+ Topstock Check</button>
+                  <button class="m-quick-tag" data-text="Walked aisle pick-path for optimal travel speed.">+ Pick Path</button>
+                  <button class="m-quick-tag" data-text="Celebrated high FTPR accuracy on grocery commodities.">+ Accuracy Win</button>
+                  <button class="m-quick-tag" data-text="Agreed to 85+ i/h speed goal for upcoming week.">+ 85 i/h Goal</button>
+                </div>
+              </div>
+
+              <textarea id="mManagerNotes" class="m-textarea" placeholder="Type coaching notes, follow-ups, or commitments from your floor 1-on-1 session..."></textarea>
+
+              <div class="m-notes-footer">
+                <button id="btnSaveManagerNotes" class="btn btn-primary btn-sm" style="width: 100%;">
+                  <i data-lucide="save"></i>
+                  <span>Save Notes (Cloud & Local)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Accordion 6: Shift Log History -->
+          <div class="m-accordion-item">
+            <button class="m-accordion-header">
+              <div class="m-accordion-title">
+                <i data-lucide="clock" style="color: var(--accent-cyan);"></i>
+                <span>Shift Performance Log</span>
+              </div>
+              <div class="m-accordion-icon"><i data-lucide="chevron-down"></i></div>
+            </button>
+            <div class="m-accordion-content">
+              <div id="mShiftsCountHeader" style="font-size: 0.78rem; color: var(--text-dim); margin-bottom: 0.75rem;">0 Shifts</div>
+              <div id="mShiftCardsContainer" class="m-shift-cards-wrap">
+                <!-- Shift cards injected -->
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Mobile Sticky Floating Action Bar (Bottom) -->
+    <div id="mStickyActionBar" class="m-sticky-bar" style="display: none;">
+      <button id="btnStickyCopyScript" class="btn btn-secondary m-sticky-btn">
+        <i data-lucide="copy"></i>
+        <span>Copy Script</span>
+      </button>
+      <button id="btnStickySaveNotes" class="btn btn-primary m-sticky-btn">
+        <i data-lucide="save"></i>
+        <span>Save Notes</span>
+      </button>
+    </div>
+
+  </div>
+
+  <!-- Mobile App Logic -->
+  <script type="module" src="src/coaching-mobile.js"></script>
+</body>
+</html>
