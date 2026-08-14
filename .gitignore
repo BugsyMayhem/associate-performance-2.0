@@ -1,0 +1,9 @@
+# Temporary files
+scratch/
+.system_generated/
+*.log
+*.tmp
+
+# Operating System
+Thumbs.db
+.DS_Store

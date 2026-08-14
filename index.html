@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Walmart Store #1012 | Associate Performance 2.0 Dashboard</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Navigation Bar -->
+    <header class="navbar">
+      <div class="brand">
+        <div class="brand-icon">
+          <i data-lucide="sparkles"></i>
+        </div>
+        <div>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span class="brand-title">Associate Performance 2.0</span>
+            <span class="brand-badge">Store #1012</span>
+            <span id="cloudStatusBadge" class="brand-badge" style="background: rgba(16, 185, 129, 0.15); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.3);">
+              <i data-lucide="cloud-check" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle; margin-right: 3px;"></i>
+              <span id="cloudStatusText">Connecting Cloud...</span>
+            </span>
+          </div>
+          <p style="font-size: 0.75rem; color: var(--text-dim);">Online Pickup & Delivery Fulfillment Intelligence</p>
+        </div>
+      </div>
+
+      <div class="nav-controls">
+        <!-- Metric Guide Button -->
+        <button id="btnOpenGlossary" class="btn btn-secondary" title="View Metric Definitions & Formulas">
+          <i data-lucide="help-circle" style="color: var(--accent-cyan);"></i>
+          <span>Metric Guide</span>
+        </button>
+
+        <!-- Dynamic Filter Controls (Week vs Custom Date Range) -->
+        <div class="filter-controls-wrapper">
+          <!-- Week Selector Mode -->
+          <div id="weekFilterContainer" class="filter-mode-container">
+            <select id="weekSelect" class="week-select" title="Filter by Fiscal Week">
+              <option value="all">📅 Loading Weeks...</option>
+            </select>
+          </div>
+
+          <!-- Custom Date Range Mode -->
+          <div id="customDateControls" class="filter-mode-container custom-date-container" style="display: none;">
+            <input type="date" id="filterStartDate" class="date-input" title="Start Date">
+            <span class="date-sep">to</span>
+            <input type="date" id="filterEndDate" class="date-input" title="End Date">
+            <select id="presetDateSelect" class="preset-select" title="Quick Date Range Presets">
+              <option value="custom">⚙️ Custom</option>
+              <option value="all">🌐 All Dates</option>
+              <option value="7d">⚡ Last 7 Days</option>
+              <option value="14d">📆 Last 14 Days</option>
+              <option value="30d">🗓️ Last 30 Days</option>
+            </select>
+          </div>
+
+          <!-- Mode Toggle Button -->
+          <button id="btnToggleDateMode" class="btn btn-secondary btn-sm" title="Toggle between Fiscal Week and Custom Date Range filter">
+            <i data-lucide="calendar-range" id="dateModeIcon"></i>
+            <span id="dateModeLabel">Date Range</span>
+          </button>
+
+          <!-- Reset Filter Button -->
+          <button id="btnResetGlobalFilter" class="btn btn-secondary btn-icon btn-sm" title="Reset all date filters to Full Dataset" style="display: none;">
+            <i data-lucide="rotate-ccw"></i>
+          </button>
+        </div>
+
+        <!-- Theme Toggle -->
+        <button id="btnThemeToggle" class="btn btn-secondary" title="Toggle Light/Dark Theme">
+          <i data-lucide="moon" id="themeIcon"></i>
+        </button>
+
+        <!-- Unified Import Data Button -->
+        <button id="btnOpenUpload" class="btn btn-primary">
+          <i data-lucide="upload-cloud"></i>
+          <span>Import Data</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Active Filter Status Bar -->
+    <div id="activeFilterStatusBar" class="filter-status-bar" style="display: none;">
+      <div class="status-content">
+        <i data-lucide="filter" style="width: 14px; height: 14px; color: var(--accent-cyan);"></i>
+        <span id="activeFilterSummary">Active Filter: All Dates</span>
+      </div>
+      <button id="btnClearFilterBanner" class="btn-link">Clear Filter</button>
+    </div>
+
+    <!-- Navigation Tab Bar -->
+    <nav class="tab-bar">
+      <button class="tab-btn active" data-view="executive">
+        <i data-lucide="layout-dashboard"></i>
+        <span>Executive Overview</span>
+      </button>
+      <button class="tab-btn" data-view="matrix">
+        <i data-lucide="grid"></i>
+        <span>2D Performance Matrix</span>
+      </button>
+      <button class="tab-btn" data-view="roster">
+        <i data-lucide="users"></i>
+        <span>Associate 360° Roster</span>
+      </button>
+      <button class="tab-btn" data-view="feedback">
+        <i data-lucide="message-square-quote"></i>
+        <span>1-on-1 Coaching Studio</span>
+      </button>
+      <button class="tab-btn" data-view="heatmaps">
+        <i data-lucide="calendar"></i>
+        <span>Day-of-Week Heatmaps</span>
+      </button>
+      <button class="tab-btn" data-view="simulator">
+        <i data-lucide="calculator"></i>
+        <span>Labor Capacity Simulator</span>
+      </button>
+    </nav>
+
+    <!-- Main Container -->
+    <main class="main-container">
+      
+      <!-- VIEW 1: EXECUTIVE OVERVIEW -->
+      <section id="viewExecutive" class="view-section active">
+        <!-- KPI Cards Grid -->
+        <div class="grid-kpi">
+          <div class="kpi-card" style="--card-color: var(--accent-blue);">
+            <div class="kpi-header">
+              <span class="kpi-title">Total Picked Volume</span>
+              <div class="kpi-icon"><i data-lucide="package"></i></div>
+            </div>
+            <div class="kpi-value" id="kpiTotalVolume">0</div>
+            <div class="kpi-subtext">
+              <span>Expected Items across period</span>
+            </div>
+          </div>
+
+          <div class="kpi-card" style="--card-color: var(--accent-emerald);">
+            <div class="kpi-header">
+              <span class="kpi-title">Store FTPR Accuracy</span>
+              <div class="kpi-icon"><i data-lucide="target"></i></div>
+            </div>
+            <div class="kpi-value" id="kpiFTPR">0.0%</div>
+            <div class="kpi-subtext">
+              <span class="trend-badge trend-up">Target: 94.0%+</span>
+              <span>First Time Pick Rate</span>
+            </div>
+          </div>
+
+          <div class="kpi-card" style="--card-color: var(--accent-purple);">
+            <div class="kpi-header">
+              <span class="kpi-title">Active Pick Speed (IPH)</span>
+              <div class="kpi-icon"><i data-lucide="zap"></i></div>
+            </div>
+            <div class="kpi-value" id="kpiPickRate">0.0</div>
+            <div class="kpi-subtext">
+              <span>Items picked per active hour</span>
+            </div>
+          </div>
+
+          <div class="kpi-card" style="--card-color: #10B981;">
+            <div class="kpi-header">
+              <span class="kpi-title">True Shift PPH</span>
+              <div class="kpi-icon"><i data-lucide="trending-up"></i></div>
+            </div>
+            <div class="kpi-value" id="kpiShiftPPH">--</div>
+            <div class="kpi-subtext">
+              <span id="kpiShiftPPHSub">Upload schedule to view</span>
+            </div>
+          </div>
+
+          <div class="kpi-card" style="--card-color: #F59E0B;">
+            <div class="kpi-header">
+              <span class="kpi-title">Picker Utilization %</span>
+              <div class="kpi-icon"><i data-lucide="pie-chart"></i></div>
+            </div>
+            <div class="kpi-value" id="kpiUtilization">--%</div>
+            <div class="kpi-subtext">
+              <span id="kpiUtilizationSub">Active Pick vs Worked Hours</span>
+            </div>
+          </div>
+
+          <div class="kpi-card" style="--card-color: var(--accent-rose);">
+            <div class="kpi-header">
+              <span class="kpi-title">Substitutions & Nil Picks</span>
+              <div class="kpi-icon"><i data-lucide="alert-triangle"></i></div>
+            </div>
+            <div class="kpi-value" id="kpiSubNil">0 / 0</div>
+            <div class="kpi-subtext">
+              <span id="kpiSubNilPct">0.0% Subs | 0.0% Nil</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="charts-grid">
+          <div class="chart-card">
+            <div class="chart-header">
+              <h3 class="chart-title">
+                <i data-lucide="trending-up" style="color: var(--accent-blue);"></i>
+                Weekly Volume & Picking Speed Trend
+              </h3>
+            </div>
+            <div class="chart-container">
+              <canvas id="chartVolumeSpeed"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-header">
+              <h3 class="chart-title">
+                <i data-lucide="shield-check" style="color: var(--accent-emerald);"></i>
+                Store FTPR Accuracy vs. Substitution Ratio
+              </h3>
+            </div>
+            <div class="chart-container">
+              <canvas id="chartAccuracySub"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 2: 2D PERFORMANCE MATRIX -->
+      <section id="viewMatrix" class="view-section">
+        <div class="matrix-container">
+          <!-- Scatter Plot Chart -->
+          <div class="chart-card">
+            <div class="chart-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <h3 class="chart-title">
+                  <i data-lucide="grid" style="color: var(--accent-purple);"></i>
+                  Associate Quadrant Scatter Matrix
+                </h3>
+                <p style="font-size: 0.8rem; color: var(--text-dim);">Hover over points to inspect individual performance</p>
+              </div>
+
+              <!-- Axis Toggle Switch -->
+              <div class="metric-toggle-group">
+                <span style="font-size: 0.8rem; color: var(--text-dim); margin-right: 0.5rem;">Speed Metric:</span>
+                <button class="toggle-btn active" id="btnToggleActiveSpeed" data-metric="active">Active Pick Rate (IPH)</button>
+                <button class="toggle-btn" id="btnToggleShiftPPH" data-metric="shift">True Shift PPH</button>
+              </div>
+            </div>
+            <div class="chart-container" style="height: 440px;">
+              <canvas id="chartScatterMatrix"></canvas>
+            </div>
+          </div>
+
+          <!-- Quadrant Summary Cards -->
+          <div class="quadrant-legend-grid">
+            <div class="quadrant-card pacesetter" id="filterQuadPacesetter">
+              <div class="quadrant-header">
+                <span class="quadrant-name" style="color: var(--accent-emerald);">🌟 Pacesetters</span>
+                <span class="quadrant-count" id="countPacesetters">0</span>
+              </div>
+              <p class="quadrant-desc" style="font-weight: 700; color: var(--accent-emerald); margin-bottom: 0.25rem;">Speed &ge; 80 i/h &bull; FTPR &ge; 94%</p>
+              <p style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.35;">Store leaders excelling in both picking velocity and item location accuracy. Role models for peak fulfillment execution.</p>
+            </div>
+
+            <div class="quadrant-card speed-demon" id="filterQuadSpeedDemon">
+              <div class="quadrant-header">
+                <span class="quadrant-name" style="color: var(--accent-blue);">⚡ Speed Demons</span>
+                <span class="quadrant-count" id="countSpeedDemons">0</span>
+              </div>
+              <p class="quadrant-desc" style="font-weight: 700; color: var(--accent-blue); margin-bottom: 0.25rem;">Speed &ge; 80 i/h &bull; FTPR &lt; 94%</p>
+              <p style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.35;">Fast pickers with high velocity who need coaching on shelf validation & top-stock checking before nil-picking.</p>
+            </div>
+
+            <div class="quadrant-card quality-champion" id="filterQuadQualityChampion">
+              <div class="quadrant-header">
+                <span class="quadrant-name" style="color: var(--accent-purple);">🎯 Quality Champions</span>
+                <span class="quadrant-count" id="countQualityChampions">0</span>
+              </div>
+              <p class="quadrant-desc" style="font-weight: 700; color: var(--accent-purple); margin-bottom: 0.25rem;">Speed &lt; 80 i/h &bull; FTPR &ge; 94%</p>
+              <p style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.35;">Highly accurate pickers who maintain excellent item precision. Need walk path & staging motion coaching to boost speed.</p>
+            </div>
+
+            <div class="quadrant-card opportunity" id="filterQuadOpportunity">
+              <div class="quadrant-header">
+                <span class="quadrant-name" style="color: var(--accent-rose);">🛠️ Opportunity Zone</span>
+                <span class="quadrant-count" id="countOpportunity">0</span>
+              </div>
+              <p class="quadrant-desc" style="font-weight: 700; color: var(--accent-rose); margin-bottom: 0.25rem;">Speed &lt; 80 i/h &bull; FTPR &lt; 94%</p>
+              <p style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.35;">Pickers below store target on pace and accuracy. Primary candidates for 1-on-1 paired coaching & foundational training.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 3: ASSOCIATE 360 ROSTER -->
+      <section id="viewRoster" class="view-section">
+        <div class="table-card">
+          <div class="table-toolbar">
+            <div class="search-box">
+              <i data-lucide="search" style="color: var(--text-dim);"></i>
+              <input type="text" id="rosterSearch" placeholder="Search associate name...">
+            </div>
+
+            <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+              <select id="rosterQuadrantFilter" class="week-select">
+                <option value="all">All Quadrants</option>
+                <option value="pacesetter">🌟 Pacesetters</option>
+                <option value="speed-demon">⚡ Speed Demons</option>
+                <option value="quality-champion">🎯 Quality Champions</option>
+                <option value="opportunity">🛠️ Opportunity Zone</option>
+              </select>
+
+              <select id="rosterUtilFilter" class="week-select">
+                <option value="all">All Roles / Util Tiers</option>
+                <option value="primary">🟢 Primary Picker (&ge;70%)</option>
+                <option value="hybrid">🟡 Multi-Role (40%–69%)</option>
+                <option value="auxiliary">🔵 Auxiliary Support (&lt;40%)</option>
+              </select>
+
+              <button id="btnExportCSV" class="btn btn-secondary">
+                <i data-lucide="download"></i>
+                <span>Export CSV</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="table-wrapper">
+            <table class="data-table" id="rosterTable">
+              <thead>
+                <tr>
+                  <th data-sort="name">Associate Name <i data-lucide="arrow-up-down"></i></th>
+                  <th data-sort="quadrant">Performance Tier <i data-lucide="arrow-up-down"></i></th>
+                  <th data-sort="utilTier">Role Tier <i data-lucide="arrow-up-down"></i></th>
+                  <th data-sort="pickRate">Active Speed (IPH) <i data-lucide="arrow-up-down"></i></th>
+                  <th data-sort="shiftPPH">Shift PPH <i data-lucide="arrow-up-down"></i></th>
+                  <th data-sort="utilization">Utilization % <i data-lucide="arrow-up-down"></i></th>
+                  <th data-sort="nonPickHours">Non-Pick Time <i data-lucide="arrow-up-down"></i></th>
+                  <th data-sort="ftpr">FTPR Accuracy <i data-lucide="arrow-up-down"></i></th>
+                  <th data-sort="totalPicked">Total Picked <i data-lucide="arrow-up-down"></i></th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="rosterTbody">
+                <!-- Rows injected dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 4: DAY-OF-WEEK HEATMAPS -->
+      <section id="viewHeatmaps" class="view-section">
+        <!-- Day Summary Header Grid -->
+        <div class="chart-card" style="margin-bottom: 2rem;">
+          <div class="chart-header">
+            <h3 class="chart-title">
+              <i data-lucide="calendar" style="color: var(--accent-amber);"></i>
+              Store Day-of-Week Fulfillment Demand & Labor Load Summary
+            </h3>
+          </div>
+          <div class="heatmap-grid" id="heatmapGrid">
+            <!-- Summary cards injected dynamically -->
+          </div>
+        </div>
+
+        <!-- 2D Week vs. Day Matrix Table -->
+        <div class="chart-card" style="margin-bottom: 2rem;">
+          <div class="chart-header">
+            <h3 class="chart-title">
+              <i data-lucide="grid" style="color: var(--accent-blue);"></i>
+              Multi-Week Heatmap Matrix (Items Requested per Day)
+            </h3>
+            <p style="font-size: 0.8rem; color: var(--text-dim);">Colors indicate demand intensity (darker/brighter = higher volume)</p>
+          </div>
+          <div class="table-wrapper">
+            <table class="data-table" style="text-align: center;">
+              <thead>
+                <tr>
+                  <th style="text-align: left;">Fiscal Week</th>
+                  <th>SAT</th>
+                  <th>SUN</th>
+                  <th>MON</th>
+                  <th>TUE</th>
+                  <th>WED</th>
+                  <th>THU</th>
+                  <th>FRI</th>
+                  <th>Total Week Volume</th>
+                </tr>
+              </thead>
+              <tbody id="heatmapMatrixTbody">
+                <!-- Heatmap matrix rows injected dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Distribution Charts -->
+        <div class="charts-grid">
+          <div class="chart-card">
+            <div class="chart-header">
+              <h3 class="chart-title">
+                <i data-lucide="bar-chart-2" style="color: var(--accent-cyan);"></i>
+                Pick Speed Distribution (Items / Hour)
+              </h3>
+            </div>
+            <div class="chart-container">
+              <canvas id="chartPickRateDist"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-header">
+              <h3 class="chart-title">
+                <i data-lucide="pie-chart" style="color: var(--accent-purple);"></i>
+                FTPR Accuracy Tier Distribution
+              </h3>
+            </div>
+            <div class="chart-container">
+              <canvas id="chartFTPRDist"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 5: LABOR CAPACITY SIMULATOR -->
+      <section id="viewSimulator" class="view-section">
+        <div class="chart-card">
+          <div class="chart-header" style="margin-bottom: 2rem;">
+            <div>
+              <h3 class="chart-title" style="font-size: 1.3rem;">
+                <i data-lucide="calculator" style="color: var(--accent-emerald);"></i>
+                "What-If" Store Capacity & Labor Productivity Simulator
+              </h3>
+              <p style="color: var(--text-dim); margin-top: 0.25rem;">
+                Simulate weekly store labor savings and cost improvements by boosting team picking pace & substitution accuracy.
+              </p>
+            </div>
+          </div>
+
+          <div class="simulator-container">
+            <!-- Controls -->
+            <div>
+              <div class="slider-group">
+                <div class="slider-label">
+                  <span>Target Store Pick Rate:</span>
+                  <span id="simPickRateVal" style="color: var(--accent-blue); font-weight: 800;">90.0 items/hr</span>
+                </div>
+                <input type="range" id="simPickRateRange" min="70" max="130" step="1" value="90" class="range-slider">
+              </div>
+
+              <div class="slider-group">
+                <div class="slider-label">
+                  <span>Target Store FTPR Accuracy:</span>
+                  <span id="simFTPRVal" style="color: var(--accent-emerald); font-weight: 800;">95.5%</span>
+                </div>
+                <input type="range" id="simFTPRRange" min="90.0" max="98.0" step="0.5" value="95.5" class="range-slider">
+              </div>
+
+              <div style="background: var(--bg-secondary); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--bg-glass-border);">
+                <h4 style="font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-muted);">Current Baseline vs Target</h4>
+                <div style="font-size: 0.85rem; display: flex; justify-content: space-between; margin-bottom: 0.4rem;">
+                  <span>Baseline Avg Pick Speed:</span>
+                  <strong id="simBaseSpeed">80.7 i/h</strong>
+                </div>
+                <div style="font-size: 0.85rem; display: flex; justify-content: space-between;">
+                  <span>Baseline Store FTPR:</span>
+                  <strong id="simBaseFTPR">93.8%</strong>
+                </div>
+              </div>
+            </div>
+
+            <!-- Projected Results Card -->
+            <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(59, 130, 246, 0.1)); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-lg); padding: 2rem; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <h4 style="font-size: 0.9rem; text-transform: uppercase; color: var(--accent-emerald); letter-spacing: 0.05em; font-weight: 700; margin-bottom: 1rem;">
+                  Projected Weekly Impact
+                </h4>
+                
+                <div style="margin-bottom: 1.5rem;">
+                  <div style="font-size: 2.25rem; font-weight: 800; color: var(--text-main); font-family: var(--font-sans);" id="simHoursSaved">
+                    +0.0 hrs
+                  </div>
+                  <div style="font-size: 0.85rem; color: var(--text-muted);">Labor Hours Saved Per Week</div>
+                </div>
+
+                <div>
+                  <div style="font-size: 2.25rem; font-weight: 800; color: var(--accent-emerald); font-family: var(--font-sans);" id="simNilReduced">
+                    -0 items
+                  </div>
+                  <div style="font-size: 0.85rem; color: var(--text-muted);">Nil Picks / Out-of-Stock Exceptions Eliminated</div>
+                </div>
+              </div>
+
+              <div style="margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--bg-glass-border); font-size: 0.8rem; color: var(--text-dim);">
+                💡 Equivalent to freeing up ~<strong id="simFullTimeAssocs" style="color: var(--text-main);">0.0</strong> full-time 40-hr associate shifts weekly for customer service or restocking.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 6: CUSTOM DATA FEEDBACK STUDIO -->
+      <section id="viewFeedback" class="view-section">
+        <!-- Studio Header & Config Card -->
+        <div class="feedback-config-card">
+          <div class="feedback-config-header">
+            <div>
+              <h3 class="chart-title" style="display: flex; align-items: center; gap: 0.5rem;">
+                <i data-lucide="message-square-quote" style="color: var(--accent-cyan);"></i>
+                1-on-1 Coaching Studio & Performance Review
+              </h3>
+              <p style="font-size: 0.85rem; color: var(--text-dim); margin-top: 0.25rem;">
+                Select any custom date range to automatically generate data-backed performance reviews, coaching insights, and personalized discussion scripts.
+              </p>
+            </div>
+            
+            <div class="feedback-quick-actions">
+              <button id="btnApplyFeedbackRangeToGlobal" class="btn btn-secondary btn-sm" title="Apply this date range to all dashboard views">
+                <i data-lucide="filter"></i>
+                <span>Sync to Dashboard</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Controls Grid: Associate Picker + Custom Date Range Pickers + Presets -->
+          <div class="feedback-controls-grid">
+            <div class="control-group">
+              <label for="feedbackAssocSelect" class="control-label">Select Associate:</label>
+              <select id="feedbackAssocSelect" class="week-select" style="width: 100%;">
+                <option value="">👤 Select an associate...</option>
+              </select>
+            </div>
+
+            <div class="control-group">
+              <label class="control-label">Custom Date Range:</label>
+              <div class="date-picker-row">
+                <input type="date" id="feedbackStartDate" class="date-input">
+                <span class="date-sep">to</span>
+                <input type="date" id="feedbackEndDate" class="date-input">
+              </div>
+            </div>
+
+            <div class="control-group">
+              <label class="control-label">Quick Presets:</label>
+              <div class="preset-chips-group">
+                <button class="preset-chip active" data-fpreset="all">Full Period</button>
+                <button class="preset-chip" data-fpreset="7d">Last 7 Days</button>
+                <button class="preset-chip" data-fpreset="14d">Last 14 Days</button>
+                <button class="preset-chip" data-fpreset="30d">Last 30 Days</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feedback Content Container -->
+        <div id="feedbackContentContainer" style="display: none; margin-top: 1.5rem;">
+          
+          <!-- Period Header Summary Card -->
+          <div class="feedback-profile-banner">
+            <div class="banner-left">
+              <div class="feedback-avatar" id="fbAvatar">AC</div>
+              <div>
+                <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                  <h2 id="fbAssocName" style="font-size: 1.4rem; font-weight: 800; margin: 0;">Associate Name</h2>
+                  <span id="fbQuadrantBadge" class="badge badge-pacesetter">Pacesetters</span>
+                  <span id="fbRoleBadge" class="badge badge-util-primary">Primary Picker</span>
+                </div>
+                <p id="fbPeriodSummaryText" style="font-size: 0.82rem; color: var(--text-muted); margin-top: 0.25rem;">
+                  Evaluating 14 shifts across May 23, 2026 – Jun 15, 2026
+                </p>
+              </div>
+            </div>
+
+            <div class="banner-actions">
+              <button id="btnCopyFeedbackScript" class="btn btn-secondary btn-sm" title="Copy formatted coaching script to clipboard">
+                <i data-lucide="copy"></i>
+                <span>Copy 1-on-1 Script</span>
+              </button>
+              <button id="btnPrintFeedbackReport" class="btn btn-primary btn-sm" title="Print custom feedback scorecard">
+                <i data-lucide="printer"></i>
+                <span>Print Scorecard</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Period Performance KPI Cards with Deltas -->
+          <div class="grid-kpi" style="margin-bottom: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));">
+            <div class="kpi-card" style="--card-color: var(--accent-blue);">
+              <div class="kpi-header">
+                <span class="kpi-title">Active Pick Speed</span>
+                <span id="fbDeltaSpeed" class="delta-badge delta-up">+0.0 i/h</span>
+              </div>
+              <div class="kpi-value" id="fbPickRate">0.0 i/h</div>
+              <div class="kpi-subtext">
+                <span id="fbSpeedBenchmark">Store Target: 80.0 i/h</span>
+              </div>
+            </div>
+
+            <div class="kpi-card" style="--card-color: var(--accent-emerald);">
+              <div class="kpi-header">
+                <span class="kpi-title">FTPR Accuracy</span>
+                <span id="fbDeltaFTPR" class="delta-badge delta-up">+0.0%</span>
+              </div>
+              <div class="kpi-value" id="fbFTPR">0.0%</div>
+              <div class="kpi-subtext">
+                <span id="fbFTPRBenchmark">Store Target: 94.0%</span>
+              </div>
+            </div>
+
+            <div class="kpi-card" style="--card-color: #10B981;">
+              <div class="kpi-header">
+                <span class="kpi-title">True Shift PPH</span>
+                <span id="fbDeltaPPH" class="delta-badge delta-neutral">--</span>
+              </div>
+              <div class="kpi-value" id="fbShiftPPH">--</div>
+              <div class="kpi-subtext">
+                <span id="fbShiftHoursSub">0 worked shift hours</span>
+              </div>
+            </div>
+
+            <div class="kpi-card" style="--card-color: #F59E0B;">
+              <div class="kpi-header">
+                <span class="kpi-title">Picker Utilization %</span>
+                <span id="fbDeltaUtil" class="delta-badge delta-neutral">--</span>
+              </div>
+              <div class="kpi-value" id="fbUtilization">--%</div>
+              <div class="kpi-subtext">
+                <span id="fbNonPickSub">0 non-pick hrs</span>
+              </div>
+            </div>
+
+            <div class="kpi-card" style="--card-color: var(--accent-purple);">
+              <div class="kpi-header">
+                <span class="kpi-title">Total Picked</span>
+                <div class="kpi-icon"><i data-lucide="package"></i></div>
+              </div>
+              <div class="kpi-value" id="fbTotalPicked">0</div>
+              <div class="kpi-subtext">
+                <span id="fbShiftsCountSub">0 shifts logged</span>
+              </div>
+            </div>
+
+            <div class="kpi-card" style="--card-color: var(--accent-rose);">
+              <div class="kpi-header">
+                <span class="kpi-title">Subs / Nil Picks</span>
+                <div class="kpi-icon"><i data-lucide="alert-triangle"></i></div>
+              </div>
+              <div class="kpi-value" id="fbSubNil">0 / 0</div>
+              <div class="kpi-subtext">
+                <span id="fbSubNilPct">0.0% Subs | 0.0% Nil</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Performance Trend Chart Card (Weekly Speed & Accuracy Trend) -->
+          <div class="chart-card feedback-card full-width" style="margin-bottom: 1.5rem;">
+            <div class="feedback-card-header" style="justify-content: space-between; align-items: center;">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <i data-lucide="trending-up" style="color: var(--accent-blue);"></i>
+                <h4 style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">Weekly Speed & Accuracy Trend</h4>
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span id="fbTrendPointsCount" style="font-size: 0.8rem; color: var(--text-dim);">Weekly Trend across Scope</span>
+              </div>
+            </div>
+            <div class="chart-container" style="height: 250px; position: relative;">
+              <canvas id="chartFeedbackTrend"></canvas>
+            </div>
+          </div>
+
+          <!-- Structured Feedback Sections Grid -->
+          <div class="feedback-sections-grid">
+            <!-- Card 1: Key Wins & Strengths -->
+            <div class="chart-card feedback-card">
+              <div class="feedback-card-header">
+                <i data-lucide="sparkles" style="color: var(--accent-emerald);"></i>
+                <h4 style="font-size: 1rem; font-weight: 700; color: var(--accent-emerald);">Demonstrated Strengths & Wins</h4>
+              </div>
+              <ul id="fbStrengthsList" class="feedback-bullet-list">
+                <!-- Wins injected -->
+              </ul>
+            </div>
+
+            <!-- Card 2: Targeted Coaching Points -->
+            <div class="chart-card feedback-card">
+              <div class="feedback-card-header">
+                <i data-lucide="target" style="color: var(--accent-amber);"></i>
+                <h4 style="font-size: 1rem; font-weight: 700; color: var(--accent-amber);">Targeted Coaching & Growth Opportunities</h4>
+              </div>
+              <ul id="fbCoachingList" class="feedback-bullet-list">
+                <!-- Coaching points injected -->
+              </ul>
+            </div>
+
+            <!-- Card 3: 1-on-1 Discussion Coaching Script -->
+            <div class="chart-card feedback-card full-width">
+              <div class="feedback-card-header" style="justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  <i data-lucide="message-square" style="color: var(--accent-cyan);"></i>
+                  <h4 style="font-size: 1rem; font-weight: 700; color: var(--accent-cyan);">1-on-1 Performance Discussion Script</h4>
+                </div>
+                <button id="btnCopyScriptInline" class="btn btn-secondary btn-sm" style="font-size: 0.75rem;">
+                  <i data-lucide="copy"></i> Copy Script
+                </button>
+              </div>
+              <p style="font-size: 0.8rem; color: var(--text-dim); margin-bottom: 0.75rem;">
+                Tailored conversational script ready for Team Leads and Coaches during 1-on-1 performance touchpoints:
+              </p>
+              <div id="fbScriptContent" class="feedback-script-box">
+                <!-- Script injected -->
+              </div>
+            </div>
+
+            <!-- Card 4: SMART Action Goals for Next Evaluation Period -->
+            <div class="chart-card feedback-card full-width">
+              <div class="feedback-card-header">
+                <i data-lucide="flag" style="color: var(--accent-purple);"></i>
+                <h4 style="font-size: 1rem; font-weight: 700; color: var(--accent-purple);">SMART Targets & Milestones for Next Period</h4>
+              </div>
+              <div class="smart-goals-grid" id="fbGoalsGrid">
+                <!-- SMART goal cards injected -->
+              </div>
+            </div>
+
+            <!-- Card 5: Manager Custom Coaching Notes & Action Commitments -->
+            <div class="chart-card feedback-card full-width">
+              <div class="feedback-card-header" style="justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  <i data-lucide="edit-3" style="color: var(--text-main);"></i>
+                  <h4 style="font-size: 1rem; font-weight: 700;">Manager Coaching Notes & Agreed Commitments</h4>
+                </div>
+                <button id="btnSaveManagerNotes" class="btn btn-secondary btn-sm" style="font-size: 0.75rem;">
+                  <i data-lucide="save"></i> Save Notes
+                </button>
+              </div>
+              <textarea id="feedbackManagerNotes" class="feedback-textarea" placeholder="Add custom notes from your 1-on-1 coaching session, associate commitments, cart prep feedback, or follow-up milestones..."></textarea>
+              <div id="feedbackNotesStatus" style="font-size: 0.75rem; color: var(--accent-emerald); margin-top: 0.4rem; display: none;">
+                ✓ Notes saved to local session.
+              </div>
+            </div>
+          </div>
+
+          <!-- Daily Shifts Performance Log Table for Custom Date Range -->
+          <div class="chart-card" style="margin-top: 1.5rem;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+              <h4 style="font-size: 0.95rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">
+                <i data-lucide="calendar" style="color: var(--accent-cyan);"></i>
+                <span>Shift Performance Log for Selected Date Window</span>
+              </h4>
+              <span style="font-size: 0.8rem; color: var(--text-dim);" id="fbDailyShiftCount">0 Shifts Logged</span>
+            </div>
+
+            <div class="table-wrapper" style="max-height: 280px; overflow-y: auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Fiscal Wk</th>
+                    <th>Shift Hours</th>
+                    <th>Pick Hours</th>
+                    <th>Active Speed</th>
+                    <th>Shift PPH</th>
+                    <th>Utilization %</th>
+                    <th>Non-Pick Time</th>
+                    <th>FTPR %</th>
+                    <th>Subs / Nil</th>
+                    <th>Items Picked</th>
+                  </tr>
+                </thead>
+                <tbody id="fbDailyShiftsTbody">
+                  <!-- Dynamic rows -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Empty State (When no associate is selected) -->
+        <div id="feedbackEmptyState" class="empty-state-card" style="padding: 3rem; text-align: center; background: var(--bg-card); border-radius: var(--radius-lg); border: 1px dashed var(--bg-glass-border); margin-top: 1.5rem;">
+          <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; font-size: 1.5rem;">
+            <i data-lucide="user-check"></i>
+          </div>
+          <h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 0.5rem;">Select an Associate to Open 1-on-1 Coaching Studio</h3>
+          <p style="font-size: 0.85rem; color: var(--text-muted); max-width: 460px; margin: 0 auto 1.5rem;">
+            Choose any associate and specify a custom date range above to produce comprehensive performance diagnostics, 1-on-1 coaching talking points, and targeted SMART goals.
+          </p>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- MODAL 1: ASSOCIATE 360 PROFILE -->
+    <div id="modalAssociate360" class="modal-overlay">
+      <div class="modal-content">
+        <button class="modal-close" id="btnClose360"><i data-lucide="x"></i></button>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+          <div style="display: flex; align-items: center; gap: 1rem;">
+            <div style="width: 54px; height: 54px; border-radius: var(--radius-md); background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple)); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.5rem; color: white;" id="modalAvatar">
+              AC
+            </div>
+            <div>
+              <h2 id="modalAssocName" style="font-size: 1.5rem; font-weight: 800;">Associate Name</h2>
+              <div style="display: flex; gap: 0.5rem; margin-top: 0.2rem; flex-wrap: wrap;" id="modalBadges">
+                <!-- Badges -->
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+            <button id="btnModalOpenFeedbackStudio" class="btn btn-secondary" title="Open in Custom Data Feedback Studio">
+              <i data-lucide="message-square-quote" style="color: var(--accent-cyan);"></i>
+              <span>Feedback Studio</span>
+            </button>
+
+            <button id="btnPrintScorecard" class="btn btn-secondary" onclick="window.print()">
+              <i data-lucide="printer"></i>
+              <span>Print Scorecard</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Modal Date Range Filter Bar -->
+        <div class="modal-filter-bar">
+          <span style="font-size: 0.8rem; font-weight: 600; color: var(--text-dim); display: flex; align-items: center; gap: 0.4rem;">
+            <i data-lucide="calendar" style="width: 14px; height: 14px;"></i> Date Scope:
+          </span>
+          <input type="date" id="modalStartDate" class="date-input" style="font-size: 0.8rem; padding: 0.3rem 0.6rem;">
+          <span class="date-sep" style="font-size: 0.8rem;">to</span>
+          <input type="date" id="modalEndDate" class="date-input" style="font-size: 0.8rem; padding: 0.3rem 0.6rem;">
+          <select id="modalPresetSelect" class="preset-select" style="font-size: 0.8rem; padding: 0.3rem 0.6rem;">
+            <option value="all">Full Period</option>
+            <option value="7d">Last 7 Days</option>
+            <option value="14d">Last 14 Days</option>
+            <option value="30d">Last 30 Days</option>
+          </select>
+        </div>
+
+        <!-- 360 Stats Grid -->
+        <div class="grid-kpi" style="margin-bottom: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));">
+          <div class="kpi-card">
+            <div class="kpi-title">Active Pick Rate</div>
+            <div class="kpi-value" id="modalPickRate">0.0</div>
+            <div class="kpi-subtext">Items per active hr</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-title">Shift PPH</div>
+            <div class="kpi-value" id="modalShiftPPH" style="color: var(--accent-emerald);">--</div>
+            <div class="kpi-subtext">Items per shift hr</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-title">Utilization %</div>
+            <div class="kpi-value" id="modalUtilization" style="color: var(--accent-amber);">--%</div>
+            <div class="kpi-subtext">Pick vs Shift hrs</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-title">Non-Pick Time</div>
+            <div class="kpi-value" id="modalNonPickHours">0.0 hrs</div>
+            <div class="kpi-subtext">Staging/Dispense/Idle</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-title">FTPR Accuracy</div>
+            <div class="kpi-value" id="modalFTPR">0.0%</div>
+            <div class="kpi-subtext">First Time Pick Rate</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-title">Total Picked</div>
+            <div class="kpi-value" id="modalTotalPicked">0</div>
+            <div class="kpi-subtext">Items requested</div>
+          </div>
+        </div>
+
+        <!-- Trend & Daily Breakdown -->
+        <div class="charts-grid" style="margin-bottom: 1.5rem;">
+          <div class="chart-card">
+            <h4 style="margin-bottom: 1rem; font-size: 0.95rem;">Weekly Speed & Accuracy Trend</h4>
+            <div class="chart-container" style="height: 220px;">
+              <canvas id="chartModalTrend"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <h4 style="margin-bottom: 1rem; font-size: 0.95rem;">Automated Coaching & Insights</h4>
+            <div style="margin-bottom: 1rem;">
+              <h5 style="font-size: 0.8rem; color: var(--accent-emerald); text-transform: uppercase; margin-bottom: 0.4rem;">Demonstrated Strengths</h5>
+              <ul id="modalStrengths" style="font-size: 0.85rem; color: var(--text-main); list-style: none;"></ul>
+            </div>
+            <div>
+              <h5 style="font-size: 0.8rem; color: var(--accent-amber); text-transform: uppercase; margin-bottom: 0.4rem;">Coaching Points</h5>
+              <ul id="modalCoaching" style="font-size: 0.85rem; color: var(--text-main); list-style: none;"></ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Daily Shifts Performance Table -->
+        <div class="chart-card">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+            <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 0.5rem;">
+              <i data-lucide="calendar" style="color: var(--accent-cyan);"></i>
+              <span>Individual Daily Shift Performance Log</span>
+            </h4>
+            <span style="font-size: 0.8rem; color: var(--text-dim);" id="modalDailyShiftCount">0 Daily Shifts Logged</span>
+          </div>
+
+          <div class="table-wrapper" style="max-height: 250px; overflow-y: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Fiscal Wk</th>
+                  <th>Shift Hours</th>
+                  <th>Pick Hours</th>
+                  <th>Active Speed</th>
+                  <th>Shift PPH</th>
+                  <th>Utilization %</th>
+                  <th>Non-Pick Time</th>
+                  <th>FTPR %</th>
+                  <th>Items Picked</th>
+                </tr>
+              </thead>
+              <tbody id="modalDailyShiftsTbody">
+                <!-- Dynamic daily shift rows -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 2: FILE UPLOAD (XLSX or PDF) -->
+    <div id="modalUpload" class="modal-overlay">
+      <div class="modal-content" style="max-width: 550px;">
+        <button class="modal-close" id="btnCloseUpload"><i data-lucide="x"></i></button>
+
+        <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 0.5rem;" id="modalUploadTitle">Import Fulfillment Data File</h3>
+        <div class="modal-body">
+          <p class="text-secondary mb-3" id="modalUploadDesc">Upload weekly associate performance reports or daily shift schedules.</p>
+          <div class="dropzone" id="fileDropzone">
+            <div class="dropzone-icon"><i data-lucide="file-spreadsheet" id="dropzoneIcon"></i></div>
+            <h4 style="font-weight: 700; margin-bottom: 0.25rem;">Click or Drag & Drop File Here</h4>
+            <p style="font-size: 0.8rem; color: var(--text-muted);" id="dropzoneHelp">Supports Excel (.xlsx, .xls) and Schedule CSV files</p>
+            <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display: none;">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 3: METRIC GLOSSARY & FORMULAS -->
+    <div id="modalGlossary" class="modal-overlay">
+      <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+        <button class="modal-close" id="btnCloseGlossary"><i data-lucide="x"></i></button>
+
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+          <div style="width: 40px; height: 40px; border-radius: var(--radius-md); background: rgba(6, 182, 212, 0.15); color: var(--accent-cyan); display: flex; align-items: center; justify-content: center; font-size: 1.25rem;">
+            <i data-lucide="book-open"></i>
+          </div>
+          <div>
+            <h3 style="font-size: 1.25rem; font-weight: 800; margin: 0;">Metric Definitions & Calculation Formulas</h3>
+            <p style="font-size: 0.85rem; color: var(--text-dim); margin: 0;">Comprehensive guide to key performance indicators across OPD Fulfillment</p>
+          </div>
+        </div>
+
+        <div class="glossary-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 1rem;">
+          <!-- Card 1 -->
+          <div class="glossary-card" style="background: var(--bg-glass); border: 1px solid var(--bg-glass-border); padding: 1.25rem; border-radius: var(--radius-md);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span style="font-weight: 700; color: var(--accent-blue);">Active Pick Speed (IPH)</span>
+              <span class="badge" style="background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); font-size: 0.75rem; padding: 2px 8px; border-radius: 4px;">Active Time</span>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">Measures item picking velocity exclusively while an associate is actively logged into a pick walk.</p>
+            <div style="background: rgba(0,0,0,0.25); padding: 0.5rem 0.75rem; border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent-cyan);">
+              Formula: (Total Picked Items) ÷ (Active Pick Hours)
+            </div>
+          </div>
+
+          <!-- Card 2 -->
+          <div class="glossary-card" style="background: var(--bg-glass); border: 1px solid var(--bg-glass-border); padding: 1.25rem; border-radius: var(--radius-md);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span style="font-weight: 700; color: var(--accent-emerald);">True Shift PPH</span>
+              <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: var(--accent-emerald); font-size: 0.75rem; padding: 2px 8px; border-radius: 4px;">Shift Time</span>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">Measures true labor efficiency across total scheduled shift hours (including setup, dwell, and secondary tasks).</p>
+            <div style="background: rgba(0,0,0,0.25); padding: 0.5rem 0.75rem; border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent-emerald);">
+              Formula: (Total Picked Items) ÷ (Scheduled Shift Hours)
+            </div>
+          </div>
+
+          <!-- Card 3 -->
+          <div class="glossary-card" style="background: var(--bg-glass); border: 1px solid var(--bg-glass-border); padding: 1.25rem; border-radius: var(--radius-md);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span style="font-weight: 700; color: var(--accent-amber);">Picker Utilization %</span>
+              <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: var(--accent-amber); font-size: 0.75rem; padding: 2px 8px; border-radius: 4px;">Ratio</span>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">Percentage of total scheduled shift hours spent actively picking on pick walks.</p>
+            <div style="background: rgba(0,0,0,0.25); padding: 0.5rem 0.75rem; border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent-amber);">
+              Formula: (Active Pick Hours ÷ Scheduled Shift Hours) × 100
+            </div>
+          </div>
+
+          <!-- Card 4 -->
+          <div class="glossary-card" style="background: var(--bg-glass); border: 1px solid var(--bg-glass-border); padding: 1.25rem; border-radius: var(--radius-md);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span style="font-weight: 700; color: var(--accent-purple);">FTPR (First Time Pick Rate)</span>
+              <span class="badge" style="background: rgba(139, 92, 246, 0.15); color: var(--accent-purple); font-size: 0.75rem; padding: 2px 8px; border-radius: 4px;">Accuracy</span>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">Percentage of requested items located and scanned on the first attempt without substitutions or nil-picks.</p>
+            <div style="background: rgba(0,0,0,0.25); padding: 0.5rem 0.75rem; border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent-purple);">
+              Formula: (FTP Actual Items ÷ FTP Expected Items) × 100
+            </div>
+          </div>
+
+          <!-- Card 5 -->
+          <div class="glossary-card" style="background: var(--bg-glass); border: 1px solid var(--bg-glass-border); padding: 1.25rem; border-radius: var(--radius-md);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span style="font-weight: 700; color: var(--accent-rose);">Non-Pick Shift Hours</span>
+              <span class="badge" style="background: rgba(244, 63, 94, 0.15); color: var(--accent-rose); font-size: 0.75rem; padding: 2px 8px; border-radius: 4px;">Time</span>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">Shift hours spent performing secondary roles (dispense, staging, quality checks, or downtime).</p>
+            <div style="background: rgba(0,0,0,0.25); padding: 0.5rem 0.75rem; border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent-rose);">
+              Formula: Max(0, Scheduled Shift Hours − Active Pick Hours)
+            </div>
+          </div>
+
+          <!-- Card 6 -->
+          <div class="glossary-card" style="background: var(--bg-glass); border: 1px solid var(--bg-glass-border); padding: 1.25rem; border-radius: var(--radius-md);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span style="font-weight: 700; color: var(--text-main);">Substitutions & Nil Pick Ratio</span>
+              <span class="badge" style="background: rgba(255,255,255,0.1); color: var(--text-main); font-size: 0.75rem; padding: 2px 8px; border-radius: 4px;">Exceptions</span>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">Proportion of requested items that required item substitutions or resulted in out-of-stock nil-picks.</p>
+            <div style="background: rgba(0,0,0,0.25); padding: 0.5rem 0.75rem; border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-main);">
+              Formula: (Substitutions or Nil Picks ÷ Total Picked) × 100
+            </div>
+          </div>
+        </div>
+
+        <!-- Quadrants Guide Header -->
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-top: 2rem; margin-bottom: 1rem; border-top: 1px solid var(--bg-glass-border); padding-top: 1.5rem;">
+          <div style="width: 40px; height: 40px; border-radius: var(--radius-md); background: rgba(139, 92, 246, 0.15); color: var(--accent-purple); display: flex; align-items: center; justify-content: center; font-size: 1.25rem;">
+            <i data-lucide="grid"></i>
+          </div>
+          <div>
+            <h3 style="font-size: 1.15rem; font-weight: 800; margin: 0;">Associate Performance Quadrant Labels</h3>
+            <p style="font-size: 0.85rem; color: var(--text-dim); margin: 0;">Operational classification criteria based on speed and accuracy benchmarks</p>
+          </div>
+        </div>
+
+        <div class="glossary-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 1rem;">
+          <!-- Quadrant 1 -->
+          <div class="glossary-card" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); padding: 1.25rem; border-radius: var(--radius-md);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span style="font-weight: 800; color: var(--accent-emerald);">🌟 Pacesetters</span>
+              <span class="badge badge-pacesetter">Speed &ge; 80 &bull; FTPR &ge; 94%</span>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-main); margin-bottom: 0.5rem;">Top-tier associates achieving store benchmarks in both picking velocity and first-time item accuracy.</p>
+            <div style="font-size: 0.8rem; color: var(--accent-emerald); font-weight: 600;">Operational Action: Role models for fulfillment execution and team peer mentoring.</div>
+          </div>
+
+          <!-- Quadrant 2 -->
+          <div class="glossary-card" style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.3); padding: 1.25rem; border-radius: var(--radius-md);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span style="font-weight: 800; color: var(--accent-blue);">⚡ Speed Demons</span>
+              <span class="badge badge-speed-demon">Speed &ge; 80 &bull; FTPR &lt; 94%</span>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-main); margin-bottom: 0.5rem;">High-velocity pickers with fast picking speed who fall below the store accuracy benchmark.</p>
+            <div style="font-size: 0.8rem; color: var(--accent-blue); font-weight: 600;">Operational Action: Coach on shelf validation and checking top-stock before nil-picking.</div>
+          </div>
+
+          <!-- Quadrant 3 -->
+          <div class="glossary-card" style="background: rgba(139, 92, 246, 0.08); border: 1px solid rgba(139, 92, 246, 0.3); padding: 1.25rem; border-radius: var(--radius-md);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span style="font-weight: 800; color: var(--accent-purple);">🎯 Quality Champions</span>
+              <span class="badge badge-quality-champion">Speed &lt; 80 &bull; FTPR &ge; 94%</span>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-main); margin-bottom: 0.5rem;">Highly accurate pickers with excellent item precision who pick below the 80 i/h speed benchmark.</p>
+            <div style="font-size: 0.8rem; color: var(--accent-purple); font-weight: 600;">Operational Action: Coach on walk path navigation, bag prep, and staging motion.</div>
+          </div>
+
+          <!-- Quadrant 4 -->
+          <div class="glossary-card" style="background: rgba(244, 63, 94, 0.08); border: 1px solid rgba(244, 63, 94, 0.3); padding: 1.25rem; border-radius: var(--radius-md);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span style="font-weight: 800; color: var(--accent-rose);">🛠️ Opportunity Zone</span>
+              <span class="badge badge-opportunity">Speed &lt; 80 &bull; FTPR &lt; 94%</span>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-main); margin-bottom: 0.5rem;">Associates performing below target speed and accuracy thresholds.</p>
+            <div style="font-size: 0.8rem; color: var(--accent-rose); font-weight: 600;">Operational Action: Primary candidates for 1-on-1 paired coaching & core retraining.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  <!-- App Code -->
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
