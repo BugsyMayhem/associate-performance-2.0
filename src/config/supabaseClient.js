@@ -123,9 +123,6 @@ export async function saveCoachingNoteToSupabase({ associateName, startDate, end
   }
 }
 
-/**
- * Retrieves a saved coaching note from Supabase.
- */
 export async function fetchCoachingNoteFromSupabase({ associateName, startDate, endDate }) {
   try {
     const client = getSupabase();
@@ -157,8 +154,75 @@ export async function fetchCoachingNoteFromSupabase({ associateName, startDate, 
   }
 }
 
+export async function fetchAllCoachingNotesForAssociate({ associateName }) {
+  try {
+    const client = getSupabase();
+    if (client) {
+      const { data, error } = await client
+        .from('coaching_notes')
+        .select('*')
+        .eq('associate_name', associateName)
+        .order('updated_at', { ascending: false });
+
+      if (error || !data) return [];
+      return data;
+    }
+
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/coaching_notes?associate_name=eq.${encodeURIComponent(associateName)}&order=updated_at.desc`, {
+      headers: {
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+      }
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json || [];
+  } catch (err) {
+    console.warn('Error fetching all associate notes from Supabase:', err);
+    return [];
+  }
+}
+
+export async function deleteCoachingNoteFromSupabase({ id, associateName, startDate, endDate, notesText }) {
+  try {
+    const client = getSupabase();
+    if (client) {
+      let query = client.from('coaching_notes').delete();
+      if (id && !String(id).includes('_')) {
+        query = query.eq('id', id);
+      } else if (associateName) {
+        query = query.eq('associate_name', associateName);
+        if (notesText) query = query.eq('notes_text', notesText);
+      }
+      const { error } = await query;
+      if (error) throw error;
+      return true;
+    }
+
+    let url = `${SUPABASE_URL}/rest/v1/coaching_notes?`;
+    if (id && !String(id).includes('_')) {
+      url += `id=eq.${id}`;
+    } else if (associateName) {
+      url += `associate_name=eq.${encodeURIComponent(associateName)}`;
+      if (notesText) url += `&notes_text=eq.${encodeURIComponent(notesText)}`;
+    }
+
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+      }
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('Error deleting note from Supabase:', err);
+    return false;
+  }
+}
+
 /**
- * Inserts new performance records into Supabase.
+ * Inserts or upserts performance records into Supabase in chunks.
  */
 export async function insertPerformanceBatchToSupabase(records) {
   try {
@@ -185,23 +249,28 @@ export async function insertPerformanceBatchToSupabase(records) {
     }));
 
     const client = getSupabase();
-    if (client) {
-      const { data, error } = await client.from('associate_performance').insert(formatted);
-      if (error) throw error;
-      return true;
-    }
+    const CHUNK_SIZE = 250;
 
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/associate_performance`, {
-      method: 'POST',
-      headers: {
-        "apikey": SUPABASE_ANON_KEY,
-        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-        "Content-Type": "application/json",
-        "Prefer": "return=minimal"
-      },
-      body: JSON.stringify(formatted)
-    });
-    return res.ok;
+    for (let i = 0; i < formatted.length; i += CHUNK_SIZE) {
+      const chunk = formatted.slice(i, i + CHUNK_SIZE);
+      if (client) {
+        const { error } = await client.from('associate_performance').insert(chunk);
+        if (error) throw error;
+      } else {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/associate_performance`, {
+          method: 'POST',
+          headers: {
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal"
+          },
+          body: JSON.stringify(chunk)
+        });
+        if (!res.ok) throw new Error(`Supabase batch error: ${res.statusText}`);
+      }
+    }
+    return true;
   } catch (err) {
     console.error('Error inserting records to Supabase:', err);
     return false;

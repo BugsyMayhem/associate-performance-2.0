@@ -14,6 +14,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
@@ -57,8 +58,12 @@
         <!-- Dynamic Filter Controls (Week vs Custom Date Range) -->
         <div class="filter-controls-wrapper">
           <!-- Week Selector Mode -->
-          <div id="weekFilterContainer" class="filter-mode-container">
-            <select id="weekSelect" class="week-select" title="Filter by Fiscal Week">
+          <div id="weekFilterContainer" class="filter-mode-container week-range-container">
+            <select id="startWeekSelect" class="week-select" title="Start Fiscal Week">
+              <option value="all">📅 Loading Weeks...</option>
+            </select>
+            <span class="date-sep">to</span>
+            <select id="endWeekSelect" class="week-select" title="End Fiscal Week">
               <option value="all">📅 Loading Weeks...</option>
             </select>
           </div>
@@ -145,8 +150,8 @@
       <!-- VIEW 1: EXECUTIVE OVERVIEW -->
       <section id="viewExecutive" class="view-section active">
         <!-- KPI Cards Grid -->
-        <div class="grid-kpi">
-          <div class="kpi-card" style="--card-color: var(--accent-blue);">
+        <div class="grid-kpi" id="executiveKpiGrid">
+          <div class="kpi-card active-metric-card" data-kpi="volume" style="--card-color: var(--accent-blue);">
             <div class="kpi-header">
               <span class="kpi-title">Total Picked Volume</span>
               <div class="kpi-icon"><i data-lucide="package"></i></div>
@@ -157,7 +162,7 @@
             </div>
           </div>
 
-          <div class="kpi-card" style="--card-color: var(--accent-emerald);">
+          <div class="kpi-card" data-kpi="ftpr" style="--card-color: var(--accent-emerald);">
             <div class="kpi-header">
               <span class="kpi-title">Store FTPR Accuracy</span>
               <div class="kpi-icon"><i data-lucide="target"></i></div>
@@ -169,7 +174,7 @@
             </div>
           </div>
 
-          <div class="kpi-card" style="--card-color: var(--accent-purple);">
+          <div class="kpi-card" data-kpi="pickRate" style="--card-color: var(--accent-purple);">
             <div class="kpi-header">
               <span class="kpi-title">Active Pick Speed (IPH)</span>
               <div class="kpi-icon"><i data-lucide="zap"></i></div>
@@ -180,7 +185,7 @@
             </div>
           </div>
 
-          <div class="kpi-card" style="--card-color: #10B981;">
+          <div class="kpi-card" data-kpi="shiftPPH" style="--card-color: #10B981;">
             <div class="kpi-header">
               <span class="kpi-title">True Shift PPH</span>
               <div class="kpi-icon"><i data-lucide="trending-up"></i></div>
@@ -191,7 +196,7 @@
             </div>
           </div>
 
-          <div class="kpi-card" style="--card-color: #F59E0B;">
+          <div class="kpi-card" data-kpi="utilization" style="--card-color: #F59E0B;">
             <div class="kpi-header">
               <span class="kpi-title">Picker Utilization %</span>
               <div class="kpi-icon"><i data-lucide="pie-chart"></i></div>
@@ -202,7 +207,7 @@
             </div>
           </div>
 
-          <div class="kpi-card" style="--card-color: var(--accent-rose);">
+          <div class="kpi-card" data-kpi="subNil" style="--card-color: var(--accent-rose);">
             <div class="kpi-header">
               <span class="kpi-title">Substitutions & Nil Picks</span>
               <div class="kpi-icon"><i data-lucide="alert-triangle"></i></div>
@@ -214,14 +219,32 @@
           </div>
         </div>
 
+        <!-- Daily Breakdown Mini-Strip for Single Week or Custom Date Range -->
+        <div id="executiveDailyStrip" class="daily-strip-container" style="display: none; margin-bottom: 1.5rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span class="badge badge-util-primary" id="dailyStripBadge"><i data-lucide="calendar"></i> Daily Breakdown</span>
+              <span style="font-size: 0.8rem; color: var(--text-muted);" id="dailyStripSubtext">Click any day to filter or see day-by-day metrics</span>
+            </div>
+            <span id="dailyStripActiveMetricLabel" style="font-size: 0.78rem; font-weight: 700; color: var(--accent-cyan);">Metric: Pick Volume</span>
+          </div>
+          <div class="daily-pills-row" id="dailyPillsRow"></div>
+        </div>
+
         <!-- Charts Grid -->
         <div class="charts-grid">
           <div class="chart-card">
-            <div class="chart-header">
-              <h3 class="chart-title">
-                <i data-lucide="trending-up" style="color: var(--accent-blue);"></i>
-                Weekly Volume & Picking Speed Trend
+            <div class="chart-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <h3 class="chart-title" id="titleChart1">
+                <i data-lucide="trending-up" id="iconChart1" style="color: var(--accent-blue);"></i>
+                <span id="textChart1">Weekly Volume & Picking Speed Trend</span>
               </h3>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span class="badge" id="chartTimeScopeBadge1" style="background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); font-size: 0.72rem;">Weekly Trend</span>
+                <button class="btn-icon-action btn-popout-chart" data-expand-target="chart1" title="Expand / View all associates on this visual" style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--bg-glass-border); border-radius: var(--radius-sm); width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-muted); transition: var(--transition-smooth);">
+                  <i data-lucide="maximize-2" style="width: 14px; height: 14px;"></i>
+                </button>
+              </div>
             </div>
             <div class="chart-container">
               <canvas id="chartVolumeSpeed"></canvas>
@@ -229,11 +252,17 @@
           </div>
 
           <div class="chart-card">
-            <div class="chart-header">
-              <h3 class="chart-title">
-                <i data-lucide="shield-check" style="color: var(--accent-emerald);"></i>
-                Store FTPR Accuracy vs. Substitution Ratio
+            <div class="chart-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <h3 class="chart-title" id="titleChart2">
+                <i data-lucide="shield-check" id="iconChart2" style="color: var(--accent-emerald);"></i>
+                <span id="textChart2">Store FTPR Accuracy vs. Substitution Ratio</span>
               </h3>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span class="badge" id="chartTimeScopeBadge2" style="background: rgba(16, 185, 129, 0.15); color: var(--accent-emerald); font-size: 0.72rem;">Weekly Trend</span>
+                <button class="btn-icon-action btn-popout-chart" data-expand-target="chart2" title="Expand / View all associates on this visual" style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--bg-glass-border); border-radius: var(--radius-sm); width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-muted); transition: var(--transition-smooth);">
+                  <i data-lucide="maximize-2" style="width: 14px; height: 14px;"></i>
+                </button>
+              </div>
             </div>
             <div class="chart-container">
               <canvas id="chartAccuracySub"></canvas>
@@ -253,18 +282,43 @@
                   <i data-lucide="grid" style="color: var(--accent-purple);"></i>
                   Associate Quadrant Scatter Matrix
                 </h3>
-                <p style="font-size: 0.8rem; color: var(--text-dim);">Hover over points to inspect individual performance</p>
+                <p style="font-size: 0.8rem; color: var(--text-dim);">Hover over points to inspect performance • Click any point to open 1-on-1 Coaching Studio</p>
               </div>
 
-              <!-- Axis Toggle Switch -->
-              <div class="metric-toggle-group">
-                <span style="font-size: 0.8rem; color: var(--text-dim); margin-right: 0.5rem;">Speed Metric:</span>
-                <button class="toggle-btn active" id="btnToggleActiveSpeed" data-metric="active">Active Pick Rate (IPH)</button>
-                <button class="toggle-btn" id="btnToggleShiftPPH" data-metric="shift">True Shift PPH</button>
+              <!-- Controls: Speed Metric & Role Tier Toggle Switch -->
+              <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                <div class="metric-toggle-group">
+                  <span style="font-size: 0.78rem; color: var(--text-dim); margin-right: 0.35rem;">Role Tier:</span>
+                  <button class="toggle-btn active" id="btnRoleFilterAll" data-role="all">All Roles</button>
+                  <button class="toggle-btn" id="btnRoleFilterPrimary" data-role="primary">🟢 Primary</button>
+                  <button class="toggle-btn" id="btnRoleFilterMulti" data-role="multi">🟡 Multi-Role</button>
+                  <button class="toggle-btn" id="btnRoleFilterAuxiliary" data-role="auxiliary">🔵 Auxiliary</button>
+                </div>
+
+                <div class="metric-toggle-group">
+                  <span style="font-size: 0.78rem; color: var(--text-dim); margin-right: 0.35rem;">Speed Metric:</span>
+                  <button class="toggle-btn active" id="btnToggleActiveSpeed" data-metric="active">Active IPH</button>
+                  <button class="toggle-btn" id="btnToggleShiftPPH" data-metric="shift">Shift PPH</button>
+                </div>
               </div>
             </div>
             <div class="chart-container" style="height: 440px;">
               <canvas id="chartScatterMatrix"></canvas>
+            </div>
+            <!-- Role Tier Legend & Count Summary Strip -->
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 1rem; background: rgba(0,0,0,0.25); border-top: 1px solid var(--bg-glass-border); border-radius: 0 0 var(--radius-md) var(--radius-md); font-size: 0.78rem; flex-wrap: wrap; gap: 0.5rem;">
+              <div style="display: flex; align-items: center; gap: 1.25rem;">
+                <span style="display: flex; align-items: center; gap: 0.35rem; color: var(--text-main); font-weight: 600;">
+                  <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #10B981;"></span> ● Primary Pickers (&ge;70% Util): <strong id="matrixCountPrimary" style="color: #10B981;">0</strong>
+                </span>
+                <span style="display: flex; align-items: center; gap: 0.35rem; color: var(--text-main); font-weight: 600;">
+                  <span style="display: inline-block; width: 9px; height: 9px; transform: rotate(45deg); background: #F59E0B;"></span> ◆ Multi-Role (40–69% Util): <strong id="matrixCountMulti" style="color: #F59E0B;">0</strong>
+                </span>
+                <span style="display: flex; align-items: center; gap: 0.35rem; color: var(--text-main); font-weight: 600;">
+                  <span style="display: inline-block; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 9px solid #3B82F6;"></span> ▲ Auxiliary Support (&lt;40% Util): <strong id="matrixCountAuxiliary" style="color: #3B82F6;">0</strong>
+                </span>
+              </div>
+              <span style="color: var(--text-dim); font-size: 0.75rem;">Point shapes indicate role utilization tiers</span>
             </div>
           </div>
 
@@ -527,7 +581,7 @@
                 1-on-1 Coaching Studio & Performance Review
               </h3>
               <p style="font-size: 0.85rem; color: var(--text-dim); margin-top: 0.25rem;">
-                Select any custom date range to automatically generate data-backed performance reviews, coaching insights, and personalized discussion scripts.
+                Automatically generate data-backed 1-on-1 performance reviews, coaching insights, and personalized discussion scripts for the active global timeframe.
               </p>
             </div>
             
@@ -536,15 +590,11 @@
                 <i data-lucide="smartphone" style="color: var(--accent-emerald);"></i>
                 <span>Open Mobile View</span>
               </a>
-              <button id="btnApplyFeedbackRangeToGlobal" class="btn btn-secondary btn-sm" title="Apply this date range to all dashboard views">
-                <i data-lucide="filter"></i>
-                <span>Sync to Dashboard</span>
-              </button>
             </div>
           </div>
 
-          <!-- Controls Grid: Associate Picker + Custom Date Range Pickers + Presets -->
-          <div class="feedback-controls-grid">
+          <!-- Controls Grid: Associate Picker + Global Timeframe Scope -->
+          <div class="feedback-controls-grid" style="grid-template-columns: 1fr auto; align-items: end; gap: 1.25rem;">
             <div class="control-group">
               <label for="feedbackAssocSelect" class="control-label">Select Associate:</label>
               <select id="feedbackAssocSelect" class="week-select" style="width: 100%;">
@@ -553,21 +603,10 @@
             </div>
 
             <div class="control-group">
-              <label class="control-label">Custom Date Range:</label>
-              <div class="date-picker-row">
-                <input type="date" id="feedbackStartDate" class="date-input">
-                <span class="date-sep">to</span>
-                <input type="date" id="feedbackEndDate" class="date-input">
-              </div>
-            </div>
-
-            <div class="control-group">
-              <label class="control-label">Quick Presets:</label>
-              <div class="preset-chips-group">
-                <button class="preset-chip active" data-fpreset="all">Full Period</button>
-                <button class="preset-chip" data-fpreset="7d">Last 7 Days</button>
-                <button class="preset-chip" data-fpreset="14d">Last 14 Days</button>
-                <button class="preset-chip" data-fpreset="30d">Last 30 Days</button>
+              <label class="control-label">Active Timeframe Scope:</label>
+              <div class="feedback-scope-badge" id="feedbackActiveScopeBadge">
+                <i data-lucide="calendar" style="width: 15px; height: 15px; color: var(--accent-cyan);"></i>
+                <span id="feedbackActiveScopeText" style="font-weight: 700; font-size: 0.875rem;">Full Dataset</span>
               </div>
             </div>
           </div>
@@ -605,8 +644,8 @@
           </div>
 
           <!-- Period Performance KPI Cards with Deltas -->
-          <div class="grid-kpi" style="margin-bottom: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));">
-            <div class="kpi-card" style="--card-color: var(--accent-blue);">
+          <div class="grid-kpi" id="fbKpiGrid" style="margin-bottom: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));">
+            <div class="kpi-card fb-kpi-card active-fb-kpi" data-fb-metric="speed" style="--card-color: var(--accent-blue);" role="button" tabindex="0" title="Click to view Daily Active Pick Speed chart">
               <div class="kpi-header">
                 <span class="kpi-title">Active Pick Speed</span>
                 <span id="fbDeltaSpeed" class="delta-badge delta-up">+0.0 i/h</span>
@@ -617,7 +656,7 @@
               </div>
             </div>
 
-            <div class="kpi-card" style="--card-color: var(--accent-emerald);">
+            <div class="kpi-card fb-kpi-card" data-fb-metric="ftpr" style="--card-color: var(--accent-emerald);" role="button" tabindex="0" title="Click to view Daily FTPR Accuracy chart">
               <div class="kpi-header">
                 <span class="kpi-title">FTPR Accuracy</span>
                 <span id="fbDeltaFTPR" class="delta-badge delta-up">+0.0%</span>
@@ -628,7 +667,7 @@
               </div>
             </div>
 
-            <div class="kpi-card" style="--card-color: #10B981;">
+            <div class="kpi-card fb-kpi-card" data-fb-metric="shiftPPH" style="--card-color: #10B981;" role="button" tabindex="0" title="Click to view Daily True Shift PPH chart">
               <div class="kpi-header">
                 <span class="kpi-title">True Shift PPH</span>
                 <span id="fbDeltaPPH" class="delta-badge delta-neutral">--</span>
@@ -639,7 +678,7 @@
               </div>
             </div>
 
-            <div class="kpi-card" style="--card-color: #F59E0B;">
+            <div class="kpi-card fb-kpi-card" data-fb-metric="utilization" style="--card-color: #F59E0B;" role="button" tabindex="0" title="Click to view Daily Picker Utilization chart">
               <div class="kpi-header">
                 <span class="kpi-title">Picker Utilization %</span>
                 <span id="fbDeltaUtil" class="delta-badge delta-neutral">--</span>
@@ -650,7 +689,7 @@
               </div>
             </div>
 
-            <div class="kpi-card" style="--card-color: var(--accent-purple);">
+            <div class="kpi-card fb-kpi-card" data-fb-metric="volume" style="--card-color: var(--accent-purple);" role="button" tabindex="0" title="Click to view Daily Picked Volume chart">
               <div class="kpi-header">
                 <span class="kpi-title">Total Picked</span>
                 <div class="kpi-icon"><i data-lucide="package"></i></div>
@@ -661,7 +700,7 @@
               </div>
             </div>
 
-            <div class="kpi-card" style="--card-color: var(--accent-rose);">
+            <div class="kpi-card fb-kpi-card" data-fb-metric="subNil" style="--card-color: var(--accent-rose);" role="button" tabindex="0" title="Click to view Daily Substitutions vs Nil Picks chart">
               <div class="kpi-header">
                 <span class="kpi-title">Subs / Nil Picks</span>
                 <div class="kpi-icon"><i data-lucide="alert-triangle"></i></div>
@@ -673,18 +712,18 @@
             </div>
           </div>
 
-          <!-- Performance Trend Chart Card (Weekly Speed & Accuracy Trend) -->
+          <!-- Performance Trend Chart Card (Daily KPI Trend) -->
           <div class="chart-card feedback-card full-width" style="margin-bottom: 1.5rem;">
             <div class="feedback-card-header" style="justify-content: space-between; align-items: center;">
               <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <i data-lucide="trending-up" style="color: var(--accent-blue);"></i>
-                <h4 style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">Weekly Speed & Accuracy Trend</h4>
+                <i data-lucide="trending-up" id="fbChartIcon" style="color: var(--accent-blue);"></i>
+                <h4 id="fbChartTitle" style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">Daily Active Pick Speed vs Store Benchmark</h4>
               </div>
               <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <span id="fbTrendPointsCount" style="font-size: 0.8rem; color: var(--text-dim);">Weekly Trend across Scope</span>
+                <span id="fbTrendPointsCount" style="font-size: 0.8rem; color: var(--text-dim);">Daily Trend across Scope</span>
               </div>
             </div>
-            <div class="chart-container" style="height: 250px; position: relative;">
+            <div class="chart-container" style="height: 260px; position: relative;">
               <canvas id="chartFeedbackTrend"></canvas>
             </div>
           </div>
@@ -748,15 +787,41 @@
               <div class="feedback-card-header" style="justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 0.5rem;">
                   <i data-lucide="edit-3" style="color: var(--text-main);"></i>
+            <!-- Card 5: Manager Custom Coaching Notes & Action Commitments -->
+            <div class="chart-card feedback-card full-width">
+              <div class="feedback-card-header" style="justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  <i data-lucide="edit-3" style="color: var(--accent-cyan);"></i>
                   <h4 style="font-size: 1rem; font-weight: 700;">Manager Coaching Notes & Agreed Commitments</h4>
                 </div>
-                <button id="btnSaveManagerNotes" class="btn btn-secondary btn-sm" style="font-size: 0.75rem;">
-                  <i data-lucide="save"></i> Save Notes
-                </button>
+                <div style="display: flex; align-items: center; gap: 0.6rem;">
+                  <button id="btnToggleNotesHistory" class="btn btn-secondary btn-sm" style="font-size: 0.75rem; display: flex; align-items: center; gap: 0.4rem;">
+                    <i data-lucide="history"></i>
+                    <span id="notesCountBadge">0 Past Notes on File</span>
+                  </button>
+                  <button id="btnSaveManagerNotes" class="btn btn-primary btn-sm" style="font-size: 0.75rem;">
+                    <i data-lucide="save"></i> Save Note
+                  </button>
+                </div>
               </div>
+
+              <!-- Collapsible Past Notes History Drawer -->
+              <div id="notesHistoryDrawer" class="notes-history-drawer" style="display: none;">
+                <div class="notes-history-drawer-header">
+                  <div style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; font-weight: 700; color: var(--accent-cyan);">
+                    <i data-lucide="book-open" style="width: 15px; height: 15px;"></i>
+                    <span>Coaching Notes History & Past Commitments</span>
+                  </div>
+                  <button id="btnCloseNotesHistory" class="btn-close-mini" title="Close Notes History">✕</button>
+                </div>
+                <div id="notesHistoryList" class="notes-history-list">
+                  <!-- Past notes cards injected here -->
+                </div>
+              </div>
+
               <textarea id="feedbackManagerNotes" class="feedback-textarea" placeholder="Add custom notes from your 1-on-1 coaching session, associate commitments, cart prep feedback, or follow-up milestones..."></textarea>
               <div id="feedbackNotesStatus" style="font-size: 0.75rem; color: var(--accent-emerald); margin-top: 0.4rem; display: none;">
-                ✓ Notes saved to local session.
+                ✓ Note saved to associate's permanent history & cloud.
               </div>
             </div>
           </div>
@@ -948,19 +1013,29 @@
       </div>
     </div>
 
-    <!-- MODAL 2: FILE UPLOAD (XLSX or PDF) -->
+    <!-- MODAL 2: FILE UPLOAD (XLSX, CSV, or ZIP) -->
     <div id="modalUpload" class="modal-overlay">
-      <div class="modal-content" style="max-width: 550px;">
+      <div class="modal-content" style="max-width: 580px;">
         <button class="modal-close" id="btnCloseUpload"><i data-lucide="x"></i></button>
 
-        <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 0.5rem;" id="modalUploadTitle">Import Fulfillment Data File</h3>
+        <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 0.5rem;" id="modalUploadTitle">Import Fulfillment Data</h3>
         <div class="modal-body">
-          <p class="text-secondary mb-3" id="modalUploadDesc">Upload weekly associate performance reports or daily shift schedules.</p>
+          <p class="text-secondary mb-3" id="modalUploadDesc">Drop all your weekly performance files (.xlsx) and shift schedules (.csv) or a .zip package at once.</p>
           <div class="dropzone" id="fileDropzone">
-            <div class="dropzone-icon"><i data-lucide="file-spreadsheet" id="dropzoneIcon"></i></div>
-            <h4 style="font-weight: 700; margin-bottom: 0.25rem;">Click or Drag & Drop File Here</h4>
-            <p style="font-size: 0.8rem; color: var(--text-muted);" id="dropzoneHelp">Supports Excel (.xlsx, .xls) and Schedule CSV files</p>
-            <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display: none;">
+            <div class="dropzone-icon"><i data-lucide="upload-cloud" id="dropzoneIcon"></i></div>
+            <h4 style="font-weight: 700; margin-bottom: 0.25rem;">Drop Files or .ZIP Here</h4>
+            <p style="font-size: 0.8rem; color: var(--text-muted);" id="dropzoneHelp">Supports multiple .xlsx, .csv files or a single .zip archive containing both</p>
+            <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.zip" multiple style="display: none;">
+          </div>
+          <div id="uploadProgressContainer" style="display: none; margin-top: 1.25rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+              <span id="uploadStatusText" style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">Processing files...</span>
+              <span id="uploadStatusCount" style="font-size: 0.78rem; color: var(--text-muted);">0 / 0</span>
+            </div>
+            <div style="width: 100%; height: 6px; background: var(--bg-glass-border); border-radius: 999px; overflow: hidden;">
+              <div id="uploadProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-blue)); transition: width 0.3s ease;"></div>
+            </div>
+            <div id="uploadDetailsLog" style="margin-top: 0.75rem; max-height: 140px; overflow-y: auto; font-size: 0.75rem; font-family: var(--font-mono); color: var(--text-dim); background: rgba(0,0,0,0.25); padding: 0.5rem; border-radius: var(--radius-sm);"></div>
           </div>
         </div>
       </div>
@@ -1109,6 +1184,79 @@
         </div>
       </div>
     </div>
+
+  <!-- MODAL: VISUAL POP-OUT / ALL ASSOCIATES FULL VIEW -->
+  <div id="modalVisualPopout" class="modal-overlay">
+    <div class="modal-content" style="max-width: 1200px; width: 95vw; height: 90vh; max-height: 90vh; display: flex; flex-direction: column; padding: 0;">
+      <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--bg-glass-border);">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <div style="width: 38px; height: 38px; border-radius: var(--radius-sm); background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
+            <i data-lucide="bar-chart-2" id="popoutIcon"></i>
+          </div>
+          <div>
+            <h2 style="font-size: 1.25rem; font-weight: 800; margin: 0;" id="popoutTitle">Visual Breakdown</h2>
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 2px;">
+              <span class="badge" id="popoutScopeBadge" style="background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); font-size: 0.75rem;">All Associates View</span>
+              <span style="font-size: 0.8rem; color: var(--text-dim);" id="popoutSubtitle">Viewing full associate roster</span>
+            </div>
+          </div>
+        </div>
+
+        <button id="btnClosePopoutModal" class="btn-icon" style="border: none; background: transparent; font-size: 1.5rem; color: var(--text-muted); cursor: pointer;">&times;</button>
+      </div>
+
+      <!-- Controls Toolbar -->
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1.5rem; background: rgba(0,0,0,0.2); border-bottom: 1px solid var(--bg-glass-border); flex-wrap: wrap; gap: 0.75rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <div class="search-box" style="margin-bottom: 0;">
+            <i data-lucide="search"></i>
+            <input type="text" id="popoutSearchInput" placeholder="Filter associate name..." style="padding: 0.4rem 0.6rem 0.4rem 2rem; font-size: 0.85rem;">
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.25rem; background: var(--bg-secondary); padding: 2px; border-radius: var(--radius-sm); border: 1px solid var(--bg-glass-border);">
+            <button id="btnPopoutViewChart" class="btn-tab-mode active" style="padding: 4px 10px; font-size: 0.75rem; border-radius: 4px; border: none; background: transparent; color: var(--text-muted); cursor: pointer;">
+              <i data-lucide="bar-chart-2" style="width: 13px; height: 13px; display: inline-block; vertical-align: middle; margin-right: 4px;"></i> Chart View
+            </button>
+            <button id="btnPopoutViewTable" class="btn-tab-mode" style="padding: 4px 10px; font-size: 0.75rem; border-radius: 4px; border: none; background: transparent; color: var(--text-muted); cursor: pointer;">
+              <i data-lucide="table" style="width: 13px; height: 13px; display: inline-block; vertical-align: middle; margin-right: 4px;"></i> Table View
+            </button>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span id="popoutCountLabel" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">28 Associates</span>
+          <button id="btnPopoutExportCSV" class="btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; gap: 0.4rem;">
+            <i data-lucide="download" style="width: 14px; height: 14px;"></i> Export Data
+          </button>
+        </div>
+      </div>
+
+      <!-- Popout Body -->
+      <div class="modal-body" style="flex: 1; overflow-y: auto; padding: 1.5rem; position: relative;">
+        <!-- Chart Canvas Container (Scrollable for large rosters) -->
+        <div id="popoutChartContainer" style="width: 100%; min-height: 450px; position: relative;">
+          <canvas id="chartPopoutExpanded"></canvas>
+        </div>
+
+        <!-- Table View Container -->
+        <div id="popoutTableContainer" style="display: none; width: 100%;">
+          <div class="table-wrapper">
+            <table class="data-table popout-data-table" id="popoutTable">
+              <thead>
+                <tr id="popoutTableHeadRow">
+                  <th>#</th>
+                  <th>Associate Name</th>
+                  <th>Role Tier</th>
+                  <th>Primary Metric</th>
+                  <th>Secondary Metric</th>
+                </tr>
+              </thead>
+              <tbody id="popoutTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- App Code -->
   <script type="module" src="src/app.js"></script>

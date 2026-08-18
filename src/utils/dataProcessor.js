@@ -138,13 +138,32 @@ export function getDatasetDateBounds(dataset) {
   };
 }
 
-export function filterDataset(dataset, { week = 'all', startDate = null, endDate = null, search = '', quadrant = 'all', utilTier = 'all' } = {}) {
+export function filterDataset(dataset, { week = 'all', startWeek = null, endWeek = null, startDate = null, endDate = null, search = '', quadrant = 'all', utilTier = 'all', scheduledOnly = true } = {}) {
   let filtered = dataset.filter(row => !row.isTotal);
 
-  // Filter by Week (if specified and not 'all')
-  if (week !== 'all' && week !== '' && week !== undefined) {
+  // Only enforce scheduled-only filter when schedule data has actually been imported.
+  // Check if any row in the filtered scope has shiftHours populated — if none do, skip the filter
+  // so the dashboard doesn't go blank when no schedule has been uploaded yet.
+  if (scheduledOnly) {
+    const hasScheduleData = filtered.some(row => row.shiftHours !== null && row.shiftHours !== undefined && row.shiftHours > 0);
+    if (hasScheduleData) {
+      filtered = filtered.filter(row => row.shiftHours !== null && row.shiftHours !== undefined && row.shiftHours > 0);
+    }
+  }
+
+  // Filter by Week Range / Multi-Week
+  if (startWeek !== null || endWeek !== null) {
+    const sWk = (startWeek !== null && startWeek !== 'all' && startWeek !== '') ? parseInt(startWeek, 10) : -Infinity;
+    const eWk = (endWeek !== null && endWeek !== 'all' && endWeek !== '') ? parseInt(endWeek, 10) : Infinity;
+    filtered = filtered.filter(row => row.week >= sWk && row.week <= eWk);
+  } else if (Array.isArray(week)) {
+    const wkSet = new Set(week.map(w => parseInt(w, 10)));
+    filtered = filtered.filter(row => wkSet.has(row.week));
+  } else if (week !== 'all' && week !== '' && week !== undefined && week !== null) {
     const wkNum = parseInt(week, 10);
-    filtered = filtered.filter(row => row.week === wkNum);
+    if (!isNaN(wkNum)) {
+      filtered = filtered.filter(row => row.week === wkNum);
+    }
   }
 
   // Filter by Custom Date Range (Start Date & End Date)
@@ -271,6 +290,78 @@ export function getStoreKPIs(rows) {
   };
 }
 
+export function getDailyTrends(dataset) {
+  const dayMap = {};
+
+  dataset.forEach(row => {
+    if (row.isTotal || !row.day) return;
+    const iso = row.iso_date || parseDateToISO(row.day);
+    if (!iso) return;
+
+    if (!dayMap[iso]) {
+      // Determine day name (e.g., Sat, Sun, Mon)
+      let dayName = '';
+      try {
+        const dt = new Date(iso + 'T00:00:00');
+        dayName = dt.toLocaleDateString('en-US', { weekday: 'short' });
+      } catch (e) {}
+
+      dayMap[iso] = {
+        isoDate: iso,
+        dateStr: row.day,
+        dayName: dayName,
+        label: dayName ? `${dayName} (${row.day})` : row.day,
+        exp: 0,
+        act: 0,
+        hours: 0,
+        sub: 0,
+        nil: 0,
+        req: 0,
+        shiftHours: 0,
+        associates: new Set()
+      };
+    }
+
+    dayMap[iso].exp += row.ftpExpected || 0;
+    dayMap[iso].act += row.ftpActual || 0;
+    dayMap[iso].hours += row.pickHours || 0;
+    dayMap[iso].sub += row.substitutions || 0;
+    dayMap[iso].nil += row.nilPicks || 0;
+    dayMap[iso].req += row.pickedAsReq || 0;
+    if (row.shiftHours) dayMap[iso].shiftHours += row.shiftHours;
+    if (row.associate) dayMap[iso].associates.add(row.associate);
+  });
+
+  const sortedDates = Object.keys(dayMap).sort();
+
+  return sortedDates.map(iso => {
+    const d = dayMap[iso];
+    const ftpr = d.exp > 0 ? (d.act / d.exp) * 100 : 0;
+    const pickRate = d.hours > 0 ? d.exp / d.hours : 0;
+    const totalPicked = d.req + d.sub;
+    const shiftPPH = d.shiftHours > 0 ? totalPicked / d.shiftHours : 0;
+    const utilization = d.shiftHours > 0 ? (d.hours / d.shiftHours) * 100 : 0;
+
+    return {
+      isoDate: d.isoDate,
+      dateStr: d.dateStr,
+      dayName: d.dayName,
+      label: d.label,
+      expected: d.exp,
+      actual: d.act,
+      ftpr: parseFloat(ftpr.toFixed(2)),
+      hours: parseFloat(d.hours.toFixed(1)),
+      pickRate: parseFloat(pickRate.toFixed(2)),
+      shiftPPH: parseFloat(shiftPPH.toFixed(2)),
+      shiftHours: parseFloat(d.shiftHours.toFixed(1)),
+      utilization: parseFloat(utilization.toFixed(1)),
+      substitutions: d.sub,
+      nilPicks: d.nil,
+      pickers: d.associates.size
+    };
+  });
+}
+
 export function getWeeklyTrends(dataset) {
   const weeksMap = {};
 
@@ -319,6 +410,7 @@ export function getWeeklyTrends(dataset) {
       hours: parseFloat(d.hours.toFixed(1)),
       pickRate: parseFloat(pickRate.toFixed(2)),
       shiftPPH: parseFloat(shiftPPH.toFixed(2)),
+      shiftHours: parseFloat(d.shiftHours.toFixed(1)),
       utilization: parseFloat(utilization.toFixed(1)),
       substitutions: d.sub,
       nilPicks: d.nil,
@@ -894,6 +986,8 @@ export function generateCustomDataFeedback({ dataset, associateName, startDate, 
     const shiftPPH = r.shiftHours > 0 ? (totalPicked / r.shiftHours) : 0;
     const ftpr = r.ftpExpected > 0 ? ((r.ftpActual / r.ftpExpected) * 100) : (r.ftpr ? r.ftpr * 100 : 0);
     const rate = r.pickHours > 0 ? (r.ftpExpected / r.pickHours) : (r.pickRate || 0);
+    const util = r.shiftHours > 0 ? ((r.pickHours / r.shiftHours) * 100) : 0;
+    const nonPick = Math.max(0, (r.shiftHours || 0) - (r.pickHours || 0));
 
     return {
       label: r.day,
@@ -902,7 +996,14 @@ export function generateCustomDataFeedback({ dataset, associateName, startDate, 
       ftpr: parseFloat(ftpr.toFixed(2)),
       pickRate: parseFloat(rate.toFixed(1)),
       shiftPPH: parseFloat(shiftPPH.toFixed(1)),
-      volume: r.ftpExpected || totalPicked
+      utilization: parseFloat(util.toFixed(1)),
+      shiftHours: r.shiftHours ? parseFloat(r.shiftHours.toFixed(1)) : 0,
+      pickHours: r.pickHours ? parseFloat(r.pickHours.toFixed(1)) : 0,
+      nonPickHours: parseFloat(nonPick.toFixed(1)),
+      volume: r.ftpExpected || totalPicked,
+      totalPicked: totalPicked,
+      substitutions: r.substitutions || 0,
+      nilPicks: r.nilPicks || 0
     };
   }).filter(d => d.isoDate).sort((a, b) => a.isoDate.localeCompare(b.isoDate));
 
