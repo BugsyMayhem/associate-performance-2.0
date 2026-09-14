@@ -18,7 +18,11 @@ import {
   classifyUtilization,
   parseDateToISO,
   getDatasetDateBounds,
-  generateCustomDataFeedback
+  generateCustomDataFeedback,
+  calculateAssociateConsistency,
+  calculateDwellTimeAudit,
+  getMultiAssociateComparison,
+  generatePreShiftHuddleData
 } from './utils/dataProcessor.js';
 
 import {
@@ -61,16 +65,22 @@ let currentQuadrant = 'all';
 let currentUtilTier = 'all';
 let scatterMetric = 'active'; // 'active' | 'shift'
 let scatterRoleFilter = 'all'; // 'all' | 'primary' | 'multi' | 'auxiliary'
+let executiveRoleFilter = 'all'; // 'all' | 'primary' | 'multi' | 'auxiliary'
 let activeExecutiveMetric = 'volume'; // 'volume' | 'ftpr' | 'pickRate' | 'shiftPPH' | 'utilization' | 'subNil'
 let sortColumn = 'pickRate';
 let sortAscending = false;
+
+// Comparison State
+let selectedRosterAssociates = new Set();
+let chartAssociateRadar = null;
+let chartCompareTrend = null;
 
 // Feedback Studio State
 let feedbackAssociate = '';
 let feedbackStartDate = null;
 let feedbackEndDate = null;
 let feedbackPreset = 'all';
-let activeFeedbackMetric = 'speed'; // 'speed' | 'ftpr' | 'shiftPPH' | 'utilization' | 'volume' | 'subNil'
+let activeFeedbackMetric = 'speed'; // 'speed' | 'ftpr' | 'shiftPPH' | 'utilization' | 'volume' | 'subNil' | 'consistency' | 'dwell'
 let currentFeedbackData = null;
 
 // Modal Associate 360 State
@@ -492,6 +502,30 @@ function setupEventListeners() {
     }
   });
 
+  // Executive Overview Role Tier Filter Buttons
+  const execRoleButtons = [
+    { id: 'btnExecRoleAll', role: 'all' },
+    { id: 'btnExecRolePrimary', role: 'primary' },
+    { id: 'btnExecRoleMulti', role: 'multi' },
+    { id: 'btnExecRoleAuxiliary', role: 'auxiliary' }
+  ];
+
+  execRoleButtons.forEach(({ id, role }) => {
+    const btn = document.getElementById(id);
+    if (btn) {
+      btn.addEventListener('click', () => {
+        executiveRoleFilter = role;
+        execRoleButtons.forEach(b => {
+          const el = document.getElementById(b.id);
+          if (el) el.classList.toggle('active', b.role === role);
+        });
+        const filtered = getFilteredActiveDataset();
+        renderKPIs(filtered);
+        renderCharts();
+      });
+    }
+  });
+
   // Executive KPI Buckets Interactive Metric Selector
   const executiveKpiCards = document.querySelectorAll('#executiveKpiGrid .kpi-card');
   executiveKpiCards.forEach(card => {
@@ -602,6 +636,55 @@ function setupEventListeners() {
         const fileObjects = Array.from(e.dataTransfer.files).map(f => ({ name: f.name, file: f }));
         await processFileList(fileObjects);
       }
+    });
+  }
+
+  // Pre-Shift Huddle Modal
+  const btnOpenHuddle = document.getElementById('btnOpenHuddleModal');
+  const btnCloseHuddle = document.getElementById('btnCloseHuddleModal');
+  const btnPrintHuddle = document.getElementById('btnPrintHuddleCard');
+  const modalHuddle = document.getElementById('modalPreShiftHuddle');
+
+  if (btnOpenHuddle) {
+    btnOpenHuddle.addEventListener('click', openPreShiftHuddleModal);
+  }
+  if (btnCloseHuddle && modalHuddle) {
+    btnCloseHuddle.addEventListener('click', () => modalHuddle.classList.remove('active'));
+    modalHuddle.addEventListener('click', (e) => {
+      if (e.target === modalHuddle) modalHuddle.classList.remove('active');
+    });
+  }
+  if (btnPrintHuddle) {
+    btnPrintHuddle.addEventListener('click', () => {
+      window.print();
+    });
+  }
+
+  // Associate Comparison Modal
+  const btnOpenCompare = document.getElementById('btnOpenCompareModal');
+  const btnCloseCompare = document.getElementById('btnCloseCompareModal');
+  const btnClearCompare = document.getElementById('btnClearComparisonSelection');
+  const modalCompare = document.getElementById('modalAssociateComparison');
+  const selectAllRoster = document.getElementById('selectAllRosterCheckbox');
+
+  if (btnOpenCompare) {
+    btnOpenCompare.addEventListener('click', openAssociateComparisonModal);
+  }
+  if (btnCloseCompare && modalCompare) {
+    btnCloseCompare.addEventListener('click', () => modalCompare.classList.remove('active'));
+    modalCompare.addEventListener('click', (e) => {
+      if (e.target === modalCompare) modalCompare.classList.remove('active');
+    });
+  }
+  if (btnClearCompare) {
+    btnClearCompare.addEventListener('click', () => {
+      clearRosterComparisonSelection();
+      if (modalCompare) modalCompare.classList.remove('active');
+    });
+  }
+  if (selectAllRoster) {
+    selectAllRoster.addEventListener('change', (e) => {
+      handleSelectAllRoster(e.target.checked);
     });
   }
 
@@ -743,7 +826,8 @@ function openVisualPopoutModal(targetKey) {
 
 function getPopoutDatasetAndConfig() {
   const filteredRows = getFilteredActiveDataset();
-  const associates = getAssociateAggregates(filteredRows);
+  const execRows = getExecutiveDataset(filteredRows);
+  const associates = getAssociateAggregates(execRows);
   const search = (document.getElementById('popoutSearchInput')?.value || '').toLowerCase().trim();
 
   let filteredAssocs = search 
@@ -1526,8 +1610,73 @@ function renderAllViews() {
   renderFeedbackStudio();
 }
 
+function getExecutiveDataset(rows) {
+  const baseRows = rows || getFilteredActiveDataset();
+  if (executiveRoleFilter === 'all') return baseRows;
+
+  // Build associate aggregates to determine each associate's utilization tier
+  const associates = getAssociateAggregates(baseRows);
+  const allowedNames = new Set(
+    associates
+      .filter(a => {
+        if (executiveRoleFilter === 'primary') return a.utilization >= 70;
+        if (executiveRoleFilter === 'multi') return a.utilization >= 40 && a.utilization < 70;
+        if (executiveRoleFilter === 'auxiliary') return a.utilization < 40;
+        return true;
+      })
+      .map(a => a.name)
+  );
+
+  return baseRows.filter(r => r.associate && allowedNames.has(r.associate));
+}
+
 function renderKPIs(rows) {
-  const kpis = getStoreKPIs(rows);
+  const baseRows = rows || getFilteredActiveDataset();
+  const allAssociates = getAssociateAggregates(baseRows);
+
+  // Calculate associate counts per role tier
+  const primaryCount = allAssociates.filter(a => a.utilization >= 70).length;
+  const multiCount = allAssociates.filter(a => a.utilization >= 40 && a.utilization < 70).length;
+  const auxCount = allAssociates.filter(a => a.utilization < 40).length;
+  const totalCount = allAssociates.length;
+
+  const countAllEl = document.getElementById('execCountAll');
+  const countPrimEl = document.getElementById('execCountPrimary');
+  const countMultiEl = document.getElementById('execCountMulti');
+  const countAuxEl = document.getElementById('execCountAuxiliary');
+
+  if (countAllEl) countAllEl.textContent = totalCount;
+  if (countPrimEl) countPrimEl.textContent = primaryCount;
+  if (countMultiEl) countMultiEl.textContent = multiCount;
+  if (countAuxEl) countAuxEl.textContent = auxCount;
+
+  // Update Role Description Text
+  const descEl = document.getElementById('execRoleActiveDesc');
+  if (descEl) {
+    if (executiveRoleFilter === 'primary') {
+      descEl.innerHTML = `🟢 <strong>Primary Pickers:</strong> ${primaryCount} associates with &ge;70% pick utilization (dedicated core fulfillment).`;
+    } else if (executiveRoleFilter === 'multi') {
+      descEl.innerHTML = `🟡 <strong>Multi-Role:</strong> ${multiCount} associates with 40%–69.9% pick utilization (cross-functional / staging / dispensing).`;
+    } else if (executiveRoleFilter === 'auxiliary') {
+      descEl.innerHTML = `🔵 <strong>Auxiliary Support:</strong> ${auxCount} associates with &lt;40% pick utilization (cross-departmental / backup support).`;
+    } else {
+      descEl.innerHTML = `Showing performance for the entire team roster (${totalCount} active associates).`;
+    }
+  }
+
+  // Get filtered rows for the selected role
+  const execRows = getExecutiveDataset(baseRows);
+  const kpis = getStoreKPIs(execRows);
+
+  // Update KPI Card titles & values
+  const titleVol = document.getElementById('kpiTitleVolume');
+  const subVol = document.getElementById('kpiSubtextVolume');
+  if (titleVol) {
+    titleVol.textContent = executiveRoleFilter === 'all' ? 'Total Picked Volume' : `${executiveRoleFilter === 'primary' ? 'Primary' : executiveRoleFilter === 'multi' ? 'Multi-Role' : 'Auxiliary'} Picked Volume`;
+  }
+  if (subVol) {
+    subVol.textContent = executiveRoleFilter === 'all' ? 'Expected Items across period' : `Expected Items by ${kpis.activePickers} active ${executiveRoleFilter} pickers`;
+  }
 
   document.getElementById('kpiTotalVolume').textContent = kpis.totalExpected.toLocaleString();
   document.getElementById('kpiFTPR').textContent = `${kpis.ftprPct}%`;
@@ -1719,20 +1868,22 @@ function renderDailyBreakdownStrip() {
 
 function renderCharts() {
   const filteredRows = getFilteredActiveDataset();
+  const execFilteredRows = getExecutiveDataset(filteredRows);
   const contextRows = getContextWeekRows();
+  const execContextRows = getExecutiveDataset(contextRows);
   const weekParams = getWeekFilterParams();
   const isSingleWeek = (filterMode === 'week' && weekParams.isSingleWeek);
   const isCustomRange = (filterMode === 'custom' && currentStartDate && currentEndDate);
   const isSingleDaySelected = (filterMode === 'custom' && currentStartDate === currentEndDate);
-  const isDailyMode = (isSingleWeek || isCustomRange || contextRows.length > 0);
+  const isDailyMode = (isSingleWeek || isCustomRange || execContextRows.length > 0);
 
   // Render Daily Strip
   renderDailyBreakdownStrip();
 
-  const associates = getAssociateAggregates(filteredRows);
-  const timeData = (isDailyMode && contextRows.length > 0)
-    ? getDailyTrends(contextRows)
-    : (isDailyMode && filteredRows.length > 0 ? getDailyTrends(filteredRows) : getWeeklyTrends(filteredRows.length > 0 ? filteredRows : activeDataset));
+  const associates = getAssociateAggregates(execFilteredRows);
+  const timeData = (isDailyMode && execContextRows.length > 0)
+    ? getDailyTrends(execContextRows)
+    : (isDailyMode && execFilteredRows.length > 0 ? getDailyTrends(execFilteredRows) : getWeeklyTrends(execFilteredRows.length > 0 ? execFilteredRows : activeDataset));
 
   const labels = timeData.map(t => isDailyMode ? t.label : t.week);
 
@@ -2420,11 +2571,12 @@ function renderCharts() {
     if (chartScatterMatrix) chartScatterMatrix.destroy();
 
     const isShift = (scatterMetric === 'shift');
+    const allMatrixAssociates = getAssociateAggregates(filteredRows);
 
     // Update Role Tier Counts on Summary Strip
-    const primaryCount = associates.filter(a => a.utilization >= 70).length;
-    const multiCount = associates.filter(a => a.utilization >= 40 && a.utilization < 70).length;
-    const auxCount = associates.filter(a => a.utilization < 40).length;
+    const primaryCount = allMatrixAssociates.filter(a => a.utilization >= 70).length;
+    const multiCount = allMatrixAssociates.filter(a => a.utilization >= 40 && a.utilization < 70).length;
+    const auxCount = allMatrixAssociates.filter(a => a.utilization < 40).length;
 
     const elPrimary = document.getElementById('matrixCountPrimary');
     const elMulti = document.getElementById('matrixCountMulti');
@@ -2434,13 +2586,13 @@ function renderCharts() {
     if (elAux) elAux.textContent = auxCount;
 
     // Filter associates by selected role tier if active
-    let scatterAssociates = associates;
+    let scatterAssociates = allMatrixAssociates;
     if (scatterRoleFilter === 'primary') {
-      scatterAssociates = associates.filter(a => a.utilization >= 70);
+      scatterAssociates = allMatrixAssociates.filter(a => a.utilization >= 70);
     } else if (scatterRoleFilter === 'multi') {
-      scatterAssociates = associates.filter(a => a.utilization >= 40 && a.utilization < 70);
+      scatterAssociates = allMatrixAssociates.filter(a => a.utilization >= 40 && a.utilization < 70);
     } else if (scatterRoleFilter === 'auxiliary') {
-      scatterAssociates = associates.filter(a => a.utilization < 40);
+      scatterAssociates = allMatrixAssociates.filter(a => a.utilization < 40);
     }
 
     const scatterData = scatterAssociates.map(a => {
@@ -2625,6 +2777,76 @@ function renderCharts() {
   }
 }
 
+function updateRosterComparisonToolbar() {
+  const btn = document.getElementById('btnOpenCompareModal');
+  const label = document.getElementById('compareBtnLabel');
+  const selectAllCb = document.getElementById('selectAllRosterCheckbox');
+  const count = selectedRosterAssociates.size;
+
+  if (label) label.textContent = `Compare (${count})`;
+  if (btn) {
+    btn.disabled = (count < 2);
+    if (count >= 2) {
+      btn.classList.remove('btn-secondary');
+      btn.classList.add('btn-primary');
+    } else {
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-secondary');
+    }
+  }
+
+  const allVisibleCheckboxes = document.querySelectorAll('#rosterTbody .roster-checkbox');
+  if (selectAllCb && allVisibleCheckboxes.length > 0) {
+    const allChecked = Array.from(allVisibleCheckboxes).every(c => c.checked);
+    selectAllCb.checked = allChecked && count > 0;
+  }
+}
+
+function handleSelectAllRoster(checked) {
+  const visibleCheckboxes = document.querySelectorAll('#rosterTbody .roster-checkbox');
+  selectedRosterAssociates.clear();
+
+  if (checked) {
+    let added = 0;
+    visibleCheckboxes.forEach(cb => {
+      if (added < 4) {
+        cb.checked = true;
+        selectedRosterAssociates.add(cb.dataset.associate);
+        const row = cb.closest('tr');
+        if (row) row.classList.add('roster-row-selected');
+        added++;
+      } else {
+        cb.checked = false;
+        const row = cb.closest('tr');
+        if (row) row.classList.remove('roster-row-selected');
+      }
+    });
+    if (visibleCheckboxes.length > 4) {
+      alert('Selected top 4 associates (maximum comparison limit is 4).');
+    }
+  } else {
+    visibleCheckboxes.forEach(cb => {
+      cb.checked = false;
+      const row = cb.closest('tr');
+      if (row) row.classList.remove('roster-row-selected');
+    });
+  }
+
+  updateRosterComparisonToolbar();
+}
+
+function clearRosterComparisonSelection() {
+  selectedRosterAssociates.clear();
+  document.querySelectorAll('#rosterTbody .roster-checkbox').forEach(cb => {
+    cb.checked = false;
+    const row = cb.closest('tr');
+    if (row) row.classList.remove('roster-row-selected');
+  });
+  const selectAllCb = document.getElementById('selectAllRosterCheckbox');
+  if (selectAllCb) selectAllCb.checked = false;
+  updateRosterComparisonToolbar();
+}
+
 function renderRosterTable() {
   const filteredRows = getFilteredActiveDataset();
   let associates = getAssociateAggregates(filteredRows);
@@ -2652,6 +2874,12 @@ function renderRosterTable() {
     } else if (sortColumn === 'utilTier') {
       valA = a.utilTier.label;
       valB = b.utilTier.label;
+    } else if (sortColumn === 'consistency') {
+      valA = a.consistency?.score || 0;
+      valB = b.consistency?.score || 0;
+    } else if (sortColumn === 'turnaround') {
+      valA = a.dwellAudit?.turnaroundLatencyMins !== null ? a.dwellAudit.turnaroundLatencyMins : 999;
+      valB = b.dwellAudit?.turnaroundLatencyMins !== null ? b.dwellAudit.turnaroundLatencyMins : 999;
     }
 
     if (valA < valB) return sortAscending ? -1 : 1;
@@ -2669,14 +2897,19 @@ function renderRosterTable() {
   associates.forEach((a, idx) => {
     const rowId = `daily-row-${idx}`;
     const assocDailyRows = filteredRows.filter(r => r.associate === a.name);
+    const isSelected = selectedRosterAssociates.has(a.name);
 
     html += `
-      <tr data-associate="${a.name}" class="${isDetailed ? 'roster-row-expandable' : ''}" data-target="${rowId}">
+      <tr data-associate="${a.name}" class="${isDetailed ? 'roster-row-expandable' : ''} ${isSelected ? 'roster-row-selected' : ''}" data-target="${rowId}">
+        <td style="text-align: center;" onclick="event.stopPropagation();">
+          <input type="checkbox" class="roster-checkbox" data-associate="${a.name}" ${isSelected ? 'checked' : ''}>
+        </td>
         <td style="font-weight: 700;">
           ${isDetailed ? `<i data-lucide="chevron-right" class="expand-icon" style="vertical-align: middle; margin-right: 4px; width: 14px; height: 14px; transition: transform 0.2s;"></i>` : ''}
           ${a.name}
         </td>
         <td><span class="badge ${a.quadrant.badgeClass}">${a.quadrant.name}</span></td>
+        <td><span class="badge ${a.consistency.badgeClass}" title="${a.consistency.description}">⚓ ${a.consistency.score}/100</span></td>
         <td><span class="badge ${a.utilTier.badgeClass}">${a.utilTier.label}</span></td>
         <td style="font-family: var(--font-mono); font-weight: 600;">${a.pickRate}</td>
         <td style="font-family: var(--font-mono); font-weight: 700; color: ${a.shiftPPH > 0 ? 'var(--accent-emerald)' : 'var(--text-dim)'};">
@@ -2685,10 +2918,12 @@ function renderRosterTable() {
         <td style="font-family: var(--font-mono); font-weight: 600; color: ${a.utilization >= 70 ? 'var(--accent-emerald)' : (a.utilization >= 40 ? 'var(--accent-amber)' : 'var(--accent-blue)')};">
           ${a.shiftHours > 0 ? `${a.utilization}%` : '--%'}
         </td>
-        <td>${a.shiftHours > 0 ? `${a.nonPickHours} hrs` : '--'}</td>
+        <td>
+          ${a.dwellAudit.hasSchedule ? `<span class="badge ${a.dwellAudit.badgeClass}" title="${a.dwellAudit.description}">⏱️ ${a.dwellAudit.turnaroundLatencyMins}m</span>` : '<span style="color: var(--text-dim);">--</span>'}
+        </td>
         <td style="font-family: var(--font-mono); font-weight: 600; color: ${a.ftpr >= 0.94 ? 'var(--accent-emerald)' : 'var(--text-main)'};">${a.ftprPct}%</td>
         <td>${a.totalPicked.toLocaleString()}</td>
-        <td style="white-space: nowrap;">
+        <td style="white-space: nowrap;" onclick="event.stopPropagation();">
           <button class="btn btn-secondary btn-sm btn-view-360" data-name="${a.name}" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; margin-right: 4px;">
             <i data-lucide="eye"></i> 360°
           </button>
@@ -2709,8 +2944,10 @@ function renderRosterTable() {
 
         html += `
           <tr class="${rowId}" style="display: none; background: rgba(15, 23, 42, 0.6); font-size: 0.78rem; border-left: 3px solid var(--accent-cyan);">
+            <td></td>
             <td style="padding-left: 1.75rem; font-weight: 600; color: var(--accent-cyan);">${dr.day}</td>
             <td><span style="font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px;">Daily Log</span></td>
+            <td></td>
             <td></td>
             <td style="font-family: var(--font-mono); font-weight: 600;">${dr.pickRate ? dr.pickRate.toFixed(1) : '--'}</td>
             <td style="font-family: var(--font-mono); font-weight: 700; color: ${drPPH !== '--' ? 'var(--accent-emerald)' : 'var(--text-dim)'};">${drPPH !== '--' ? `${drPPH} PPH` : '--'}</td>
@@ -2728,7 +2965,28 @@ function renderRosterTable() {
   tbody.innerHTML = html;
   if (window.lucide) window.lucide.createIcons();
 
-  // Attach event handlers
+  // Attach Checkbox handlers
+  tbody.querySelectorAll('.roster-checkbox').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      e.stopPropagation();
+      const assoc = cb.dataset.associate;
+      if (cb.checked) {
+        if (selectedRosterAssociates.size >= 4) {
+          cb.checked = false;
+          alert('You can select up to 4 associates for head-to-head comparison.');
+          return;
+        }
+        selectedRosterAssociates.add(assoc);
+      } else {
+        selectedRosterAssociates.delete(assoc);
+      }
+      const row = cb.closest('tr');
+      if (row) row.classList.toggle('roster-row-selected', cb.checked);
+      updateRosterComparisonToolbar();
+    });
+  });
+
+  // Attach button handlers
   document.querySelectorAll('.btn-view-360').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -2750,7 +3008,7 @@ function renderRosterTable() {
   if (isDetailed) {
     document.querySelectorAll('.roster-row-expandable').forEach(row => {
       row.addEventListener('click', (e) => {
-        if (e.target.closest('button')) return;
+        if (e.target.closest('button') || e.target.closest('input')) return;
         const targetClass = row.dataset.target;
         const subRows = document.querySelectorAll(`.${targetClass}`);
         const icon = row.querySelector('.expand-icon');
@@ -2822,6 +3080,22 @@ function renderModalAssociate360Content() {
   document.getElementById('modalNonPickHours').textContent = data.shiftHours > 0 ? `${data.nonPickHours} hrs` : '--';
   document.getElementById('modalFTPR').textContent = `${data.ftprPct}%`;
   document.getElementById('modalTotalPicked').textContent = data.totalPicked.toLocaleString();
+
+  // Populate Consistency & Dwell KPI Cards
+  const elModalConsScore = document.getElementById('modalConsistencyScore');
+  const elModalConsTier = document.getElementById('modalConsistencyTier');
+  const elModalDwell = document.getElementById('modalDwellLatency');
+
+  if (elModalConsScore && data.consistency) {
+    elModalConsScore.textContent = `${data.consistency.score}/100`;
+  }
+  if (elModalConsTier && data.consistency) {
+    elModalConsTier.className = `badge ${data.consistency.badgeClass}`;
+    elModalConsTier.textContent = data.consistency.tierName;
+  }
+  if (elModalDwell && data.dwellAudit) {
+    elModalDwell.textContent = data.dwellAudit.hasSchedule ? `${data.dwellAudit.turnaroundLatencyMins}m` : '--';
+  }
 
   document.getElementById('modalStrengths').innerHTML = data.strengths.map(s => `<li style="margin-bottom: 0.4rem;">${s}</li>`).join('') || '<li>Standard fulfillment execution</li>';
   document.getElementById('modalCoaching').innerHTML = data.coaching.map(c => `<li style="margin-bottom: 0.4rem;">${c}</li>`).join('') || '<li>Maintain current pace & accuracy excellence</li>';
@@ -2985,6 +3259,32 @@ function renderFeedbackStudio() {
   document.getElementById('fbShiftsCountSub').textContent = `${m.daysCount} shifts logged in range`;
   document.getElementById('fbSubNil').textContent = `${m.substitutions.toLocaleString()} / ${m.nilPicks.toLocaleString()}`;
   document.getElementById('fbSubNilPct').textContent = `${((m.substitutions / (m.ftpExpected || 1)) * 100).toFixed(1)}% Subs | ${((m.nilPicks / (m.ftpExpected || 1)) * 100).toFixed(1)}% Nil`;
+
+  // Populate Consistency & Dwell Cards in Feedback Studio
+  const elFbConsScore = document.getElementById('fbConsistencyScore');
+  const elFbConsTier = document.getElementById('fbConsistencyTierBadge');
+  const elFbConsSpread = document.getElementById('fbConsistencySpread');
+  const elFbDwell = document.getElementById('fbDwellMins');
+  const elFbDwellSub = document.getElementById('fbDwellSub');
+
+  if (elFbConsScore && m.consistency) {
+    elFbConsScore.textContent = `${m.consistency.score}/100`;
+  }
+  if (elFbConsTier && m.consistency) {
+    elFbConsTier.className = `badge ${m.consistency.badgeClass}`;
+    elFbConsTier.textContent = m.consistency.tierName;
+  }
+  if (elFbConsSpread && m.consistency) {
+    elFbConsSpread.textContent = `σ: ${m.consistency.speedStdDev} | Spread: ${m.consistency.speedSpread} i/h`;
+  }
+  if (elFbDwell && m.dwellAudit) {
+    elFbDwell.textContent = m.dwellAudit.hasSchedule ? `${m.dwellAudit.turnaroundLatencyMins}m` : '--';
+  }
+  if (elFbDwellSub && m.dwellAudit) {
+    const netDwell = m.dwellAudit.nonPickDwellHours !== undefined ? m.dwellAudit.nonPickDwellHours : (m.dwellAudit.netDwellHours || m.dwellAudit.nonPickHours || 0);
+    const walks = m.dwellAudit.estimatedPickWalks || m.dwellAudit.estimatedWalks || 1;
+    elFbDwellSub.textContent = m.dwellAudit.hasSchedule ? `${netDwell}h dwell (${walks} walks)` : 'Schedule required';
+  }
 
   // Delta Badges
   renderDeltaBadge('fbDeltaSpeed', d.speedDelta, ' i/h');
@@ -3441,6 +3741,124 @@ function renderFeedbackChart(feedbackData) {
       };
       break;
     }
+
+    case 'consistency': {
+      titleText = 'Daily Speed Consistency, Volatility Bands & Shift-over-Shift Delta';
+      iconName = 'anchor';
+      iconColor = 'var(--accent-cyan)';
+      const speedData = dailyTrend.map(d => d.pickRate);
+      const avgSpeed = speedData.length > 0 ? (speedData.reduce((a, b) => a + b, 0) / speedData.length) : 80;
+      const stdDev = speedData.length > 1
+        ? Math.sqrt(speedData.map(x => Math.pow(x - avgSpeed, 2)).reduce((a, b) => a + b, 0) / (speedData.length - 1))
+        : 0;
+
+      chartType = 'line';
+      datasets = [
+        {
+          label: 'Daily Pick Speed (i/h)',
+          data: speedData,
+          borderColor: '#06B6D4',
+          backgroundColor: 'rgba(6, 182, 212, 0.12)',
+          borderWidth: 3,
+          pointRadius: 5,
+          pointHoverRadius: 8,
+          pointBackgroundColor: '#06B6D4',
+          fill: true,
+          tension: 0.3
+        },
+        {
+          label: `Mean Baseline (${avgSpeed.toFixed(1)} i/h)`,
+          data: dailyTrend.map(() => parseFloat(avgSpeed.toFixed(1))),
+          borderColor: '#10B981',
+          borderWidth: 2,
+          borderDash: [6, 4],
+          pointRadius: 0,
+          fill: false,
+          tension: 0
+        },
+        {
+          label: `+1σ Volatility Band (+${stdDev.toFixed(1)})`,
+          data: dailyTrend.map(() => parseFloat((avgSpeed + stdDev).toFixed(1))),
+          borderColor: 'rgba(245, 158, 11, 0.6)',
+          borderWidth: 1.5,
+          borderDash: [4, 4],
+          pointRadius: 0,
+          fill: false,
+          tension: 0
+        },
+        {
+          label: `-1σ Volatility Band (-${stdDev.toFixed(1)})`,
+          data: dailyTrend.map(() => Math.max(0, parseFloat((avgSpeed - stdDev).toFixed(1)))),
+          borderColor: 'rgba(244, 63, 94, 0.6)',
+          borderWidth: 1.5,
+          borderDash: [4, 4],
+          pointRadius: 0,
+          fill: false,
+          tension: 0
+        }
+      ];
+      scalesConfig.y.suggestedMin = Math.max(30, Math.min(...speedData) - 10);
+      scalesConfig.y.suggestedMax = Math.max(100, ...speedData) + 15;
+      break;
+    }
+
+    case 'dwell': {
+      titleText = 'Daily Non-Pick Dwell Time & Walk Turnaround Latency';
+      iconName = 'timer';
+      iconColor = '#F59E0B';
+      const dwellMinsData = dailyTrend.map(d => {
+        if (!d.shiftHours || d.shiftHours <= 0) return null;
+        const breakDeduction = d.shiftHours >= 6.0 ? 1.0 : (d.shiftHours >= 4.0 ? 0.5 : 0.0);
+        const netNonPick = Math.max(0, d.shiftHours - (d.pickHours || 0) - breakDeduction);
+        const estWalks = Math.max(1, Math.round((d.totalPicked || d.volume || 1) / 65));
+        return Math.round((netNonPick * 60) / estWalks);
+      });
+      const nonPickHoursData = dailyTrend.map(d => d.nonPickHours || 0);
+
+      chartType = 'bar';
+      datasets = [
+        {
+          type: 'line',
+          label: 'Turnaround Latency (mins/walk)',
+          data: dwellMinsData,
+          borderColor: '#F59E0B',
+          backgroundColor: 'transparent',
+          borderWidth: 3,
+          pointRadius: 5,
+          pointHoverRadius: 8,
+          pointBackgroundColor: '#F59E0B',
+          tension: 0.3,
+          yAxisID: 'y'
+        },
+        {
+          type: 'bar',
+          label: 'Non-Pick Staging / Dwell Hours',
+          data: nonPickHoursData,
+          backgroundColor: 'rgba(244, 63, 94, 0.55)',
+          borderColor: '#F43F5E',
+          borderWidth: 1.5,
+          borderRadius: 4,
+          yAxisID: 'y1'
+        }
+      ];
+      scalesConfig.y = {
+        position: 'left',
+        title: { display: true, text: 'Turnaround (Mins / Walk)', color: '#F59E0B' },
+        ticks: { color: '#94A3B8' },
+        suggestedMin: 0,
+        suggestedMax: 30,
+        grid: { color: 'rgba(255,255,255,0.05)' }
+      };
+      scalesConfig.y1 = {
+        position: 'right',
+        title: { display: true, text: 'Non-Pick Hours', color: '#F43F5E' },
+        ticks: { color: '#F43F5E' },
+        grid: { drawOnChartArea: false },
+        suggestedMin: 0,
+        suggestedMax: 8
+      };
+      break;
+    }
   }
 
   if (titleEl) titleEl.textContent = titleText;
@@ -3562,6 +3980,415 @@ function renderDeltaBadge(elId, val, unit = '') {
     el.className = 'delta-badge delta-neutral';
     el.textContent = `0.0${unit} vs Prior`;
   }
+}
+
+/* ==========================================================================
+   MODULE 5: HEAD-TO-HEAD ASSOCIATE COMPARISON LOGIC
+   ========================================================================== */
+
+function openAssociateComparisonModal() {
+  if (selectedRosterAssociates.size < 2) {
+    alert('Please select at least 2 associates (using the checkboxes on the roster table) to run a head-to-head comparison.');
+    return;
+  }
+  const modal = document.getElementById('modalAssociateComparison');
+  if (modal) modal.classList.add('active');
+  renderAssociateComparisonModal();
+}
+
+function renderAssociateComparisonModal() {
+  const assocNames = Array.from(selectedRosterAssociates);
+  const dateRange = getActiveFilterDateRange();
+  
+  const comparisonData = getMultiAssociateComparison(activeDataset, assocNames, {
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate
+  });
+
+  if (!comparisonData || comparisonData.associates.length === 0) return;
+
+  // 1. Render Compare Chips Bar
+  const chipsBar = document.getElementById('compareChipsBar');
+  if (chipsBar) {
+    chipsBar.innerHTML = comparisonData.associates.map(a => `
+      <div class="compare-chip" style="background: ${a.color}22; border-color: ${a.color}; color: #FFFFFF;">
+        <span style="display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: ${a.color};"></span>
+        <span>${a.name}</span>
+        <button class="compare-chip-remove" data-associate="${a.name}" title="Remove from comparison">&times;</button>
+      </div>
+    `).join('');
+
+    chipsBar.querySelectorAll('.compare-chip-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const name = btn.dataset.associate;
+        selectedRosterAssociates.delete(name);
+        // uncheck in roster table
+        const cb = document.querySelector(`#rosterTbody .roster-checkbox[data-associate="${name}"]`);
+        if (cb) {
+          cb.checked = false;
+          const row = cb.closest('tr');
+          if (row) row.classList.remove('roster-row-selected');
+        }
+        updateRosterComparisonToolbar();
+        if (selectedRosterAssociates.size < 2) {
+          const modal = document.getElementById('modalAssociateComparison');
+          if (modal) modal.classList.remove('active');
+        } else {
+          renderAssociateComparisonModal();
+        }
+      });
+    });
+  }
+
+  // 2. Render 5-Axis Spider / Radar Chart
+  const ctxRadar = document.getElementById('chartAssociateRadar');
+  if (ctxRadar) {
+    if (chartAssociateRadar) chartAssociateRadar.destroy();
+    chartAssociateRadar = new Chart(ctxRadar, {
+      type: 'radar',
+      data: {
+        labels: comparisonData.radarLabels,
+        datasets: comparisonData.associates.map(a => ({
+          label: a.name,
+          data: a.radarScores,
+          backgroundColor: a.color.replace('rgb', 'rgba').replace(')', ', 0.22)'),
+          borderColor: a.color,
+          borderWidth: 2.5,
+          pointBackgroundColor: a.color,
+          pointBorderColor: '#FFFFFF',
+          pointRadius: 4,
+          pointHoverRadius: 7
+        }))
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          r: {
+            angleLines: { color: 'rgba(255, 255, 255, 0.12)' },
+            grid: { color: 'rgba(255, 255, 255, 0.08)' },
+            pointLabels: {
+              color: '#F8FAFC',
+              font: { family: 'Plus Jakarta Sans', size: 12, weight: '700' }
+            },
+            ticks: {
+              display: false,
+              min: 0,
+              max: 100,
+              stepSize: 20
+            },
+            suggestedMin: 0,
+            suggestedMax: 100
+          }
+        },
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: { color: '#F8FAFC', font: { family: 'Plus Jakarta Sans', size: 12, weight: '600' } }
+          },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `${ctx.dataset.label}: ${ctx.raw} pts (normalized percentile)`
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // 3. Render Trend Overlay Chart
+  const ctxTrend = document.getElementById('chartCompareTrend');
+  if (ctxTrend) {
+    if (chartCompareTrend) chartCompareTrend.destroy();
+    
+    chartCompareTrend = new Chart(ctxTrend, {
+      type: 'line',
+      data: {
+        labels: comparisonData.timeLabels,
+        datasets: comparisonData.associates.map(a => ({
+          label: `${a.name} (i/h)`,
+          data: a.dailySpeeds,
+          borderColor: a.color,
+          backgroundColor: 'transparent',
+          borderWidth: 2.5,
+          tension: 0.3,
+          pointRadius: 4,
+          pointHoverRadius: 7,
+          pointBackgroundColor: a.color
+        }))
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { ticks: { color: '#94A3B8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+          y: { 
+            title: { display: true, text: 'Active Pick Speed (i/h)', color: '#94A3B8' },
+            ticks: { color: '#94A3B8' }, 
+            grid: { color: 'rgba(255,255,255,0.05)' } 
+          }
+        },
+        plugins: {
+          legend: { position: 'top', labels: { color: '#F8FAFC' } }
+        }
+      }
+    });
+  }
+
+  // 4. Render Direct Comparison Table Matrix
+  const theadRow = document.getElementById('compareTableHeadRow');
+  const tbody = document.getElementById('compareTableBody');
+
+  if (theadRow) {
+    theadRow.innerHTML = `
+      <th style="text-align: left; width: 220px;">Performance Metric</th>
+      ${comparisonData.associates.map(a => `
+        <th style="text-align: center; color: ${a.color};">
+          <div style="font-size: 0.95rem; font-weight: 800;">${a.name}</div>
+          <div style="font-size: 0.72rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase;">${a.utilTier.label}</div>
+        </th>
+      `).join('')}
+    `;
+  }
+
+  if (tbody) {
+    const metricsToCompare = [
+      {
+        label: 'Performance Quadrant',
+        icon: 'grid',
+        getValue: (a) => `<span class="badge ${a.quadrant.badgeClass}">${a.quadrant.name}</span>`,
+        getRaw: () => null
+      },
+      {
+        label: 'Active Pick Speed (IPH)',
+        icon: 'zap',
+        getValue: (a) => `<strong>${a.pickRate}</strong> i/h`,
+        getRaw: (a) => a.pickRate,
+        isHigherBetter: true
+      },
+      {
+        label: 'First Time Pick Rate (FTPR)',
+        icon: 'target',
+        getValue: (a) => `<strong>${a.ftprPct}%</strong>`,
+        getRaw: (a) => parseFloat(a.ftprPct),
+        isHigherBetter: true
+      },
+      {
+        label: 'Consistency & Volatility Index',
+        icon: 'anchor',
+        getValue: (a) => `<span class="badge ${a.consistency.badgeClass}">${a.consistency.score}/100</span> <span style="font-size: 0.72rem; color: var(--text-dim);">(${a.consistency.tierName})</span>`,
+        getRaw: (a) => a.consistency.score,
+        isHigherBetter: true
+      },
+      {
+        label: 'Turnaround Latency per Walk',
+        icon: 'timer',
+        getValue: (a) => a.dwellAudit.hasSchedule ? `<span class="badge ${a.dwellAudit.badgeClass}">${a.dwellAudit.turnaroundLatencyMins}m / walk</span>` : '--',
+        getRaw: (a) => a.dwellAudit.hasSchedule ? a.dwellAudit.turnaroundLatencyMins : null,
+        isHigherBetter: false
+      },
+      {
+        label: 'True Shift PPH',
+        icon: 'trending-up',
+        getValue: (a) => a.shiftPPH > 0 ? `<strong>${a.shiftPPH}</strong> PPH` : '--',
+        getRaw: (a) => a.shiftPPH > 0 ? a.shiftPPH : null,
+        isHigherBetter: true
+      },
+      {
+        label: 'Shift Pick Utilization',
+        icon: 'percent',
+        getValue: (a) => a.shiftHours > 0 ? `<strong>${a.utilization}%</strong> (${a.nonPickHours}h non-pick)` : '--',
+        getRaw: (a) => a.shiftHours > 0 ? a.utilization : null,
+        isHigherBetter: true
+      },
+      {
+        label: 'Total Picked Volume',
+        icon: 'package',
+        getValue: (a) => `${a.totalPicked.toLocaleString()} items`,
+        getRaw: (a) => a.totalPicked,
+        isHigherBetter: true
+      },
+      {
+        label: 'Substitutions / Nil Picks',
+        icon: 'alert-triangle',
+        getValue: (a) => `${a.substitutions} subs / ${a.nilPicks} nils`,
+        getRaw: (a) => a.nilPicks,
+        isHigherBetter: false
+      },
+      {
+        label: 'Active Shifts in Timeframe',
+        icon: 'calendar',
+        getValue: (a) => `${a.daysActive} shifts logged`,
+        getRaw: (a) => a.daysActive,
+        isHigherBetter: true
+      }
+    ];
+
+    tbody.innerHTML = metricsToCompare.map(m => {
+      const validRaws = comparisonData.associates.map(a => m.getRaw(a)).filter(v => v !== null && v !== undefined);
+      let bestVal = null;
+      if (validRaws.length > 1 && m.isHigherBetter !== undefined) {
+        bestVal = m.isHigherBetter ? Math.max(...validRaws) : Math.min(...validRaws);
+      }
+
+      return `
+        <tr>
+          <td class="compare-metric-row-title">
+            <i data-lucide="${m.icon}" style="width: 14px; height: 14px; color: var(--accent-cyan);"></i>
+            <span>${m.label}</span>
+          </td>
+          ${comparisonData.associates.map(a => {
+            const rawVal = m.getRaw(a);
+            const isWinner = (bestVal !== null && rawVal === bestVal);
+            return `
+              <td style="text-align: center;" class="${isWinner ? 'compare-metric-winner' : ''}">
+                ${m.getValue(a)}
+                ${isWinner ? ' <span style="font-size: 0.72rem; color: #10B981; font-weight: 800;">★</span>' : ''}
+              </td>
+            `;
+          }).join('')}
+        </tr>
+      `;
+    }).join('');
+
+    if (window.lucide) window.lucide.createIcons();
+  }
+}
+
+/* ==========================================================================
+   MODULE 6: PRE-SHIFT HUDDLE BRIEFING LOGIC
+   ========================================================================== */
+
+function openPreShiftHuddleModal() {
+  const modal = document.getElementById('modalPreShiftHuddle');
+  if (modal) modal.classList.add('active');
+  renderPreShiftHuddleModal();
+}
+
+function renderPreShiftHuddleModal() {
+  const dateRange = getActiveFilterDateRange();
+  const weekParams = getWeekFilterParams();
+
+  const huddle = generatePreShiftHuddleData(activeDataset, {
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate
+  });
+
+  if (!huddle) return;
+
+  // 1. Banner Info
+  const elDate = document.getElementById('huddleCurrentDate');
+  const elScope = document.getElementById('huddleScopeInfo');
+  if (elDate) elDate.textContent = huddle.todayDate;
+  if (elScope) elScope.textContent = `Based on Fiscal ${weekParams.label} Baseline Performance`;
+
+  // 2. Core Store KPIs
+  const elFTPR = document.getElementById('huddleFTPR');
+  const elPickRate = document.getElementById('huddlePickRate');
+  const elShiftPPH = document.getElementById('huddleShiftPPH');
+  const elUtilization = document.getElementById('huddleUtilization');
+  const elVolume = document.getElementById('huddleVolume');
+
+  if (elFTPR) elFTPR.textContent = `${huddle.baselineKPIs.ftprPct}%`;
+  if (elPickRate) elPickRate.textContent = `${huddle.baselineKPIs.pickRate} i/h`;
+  if (elShiftPPH) elShiftPPH.textContent = `${huddle.baselineKPIs.shiftPPH} PPH`;
+  if (elUtilization) elUtilization.textContent = `${huddle.baselineKPIs.utilization}%`;
+  if (elVolume) elVolume.textContent = huddle.baselineKPIs.totalExpected.toLocaleString();
+
+  // 3. Shift Demand Forecast & Staging Plan
+  const elForecast = document.getElementById('huddleForecastBox');
+  if (elForecast) {
+    elForecast.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; flex-wrap: wrap; gap: 0.5rem;">
+        <span style="font-weight: 800; color: var(--accent-cyan); font-size: 0.9rem;">
+          📊 Projected Daily Fulfillment Workload: <strong>${huddle.forecast.projectedVolume.toLocaleString()} Items</strong>
+        </span>
+        <span style="font-size: 0.76rem; font-weight: 700; color: var(--text-dim); background: rgba(255,255,255,0.05); padding: 2px 8px; border-radius: 4px;">
+          Store #1012 OPD
+        </span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.4rem; text-align: center;">
+        <div style="background: rgba(0,0,0,0.15); padding: 0.4rem; border-radius: 4px;">
+          <div style="font-size: 0.68rem; color: var(--text-dim); text-transform: uppercase;">Required Pick Hours</div>
+          <div style="font-size: 1.05rem; font-weight: 800; font-family: var(--font-mono); color: var(--accent-blue);">${huddle.forecast.estimatedPickHoursNeeded} hrs</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.15); padding: 0.4rem; border-radius: 4px;">
+          <div style="font-size: 0.68rem; color: var(--text-dim); text-transform: uppercase;">Core Pickers Needed</div>
+          <div style="font-size: 1.05rem; font-weight: 800; font-family: var(--font-mono); color: var(--accent-emerald);">${huddle.forecast.recommendedPrimaryPickers} associates</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.15); padding: 0.4rem; border-radius: 4px;">
+          <div style="font-size: 0.68rem; color: var(--text-dim); text-transform: uppercase;">Avg Daily Historical Volume</div>
+          <div style="font-size: 1.05rem; font-weight: 800; font-family: var(--font-mono); color: #F59E0B;">${huddle.forecast.dailyAvgVolume.toLocaleString()} items</div>
+        </div>
+      </div>
+    `;
+  }
+
+  // 4. Honor Roll (Top Performers)
+  const elSpeed = document.getElementById('huddleSpeedLeaders');
+  const elAcc = document.getElementById('huddleAccuracyLeaders');
+  const elCons = document.getElementById('huddleConsistencyLeaders');
+
+  if (elSpeed) {
+    elSpeed.innerHTML = huddle.honorRoll.speedLeaders.map((a, i) => `
+      <li class="huddle-honor-row">
+        <span class="huddle-honor-name">${i + 1}. ${a.name}</span>
+        <span class="huddle-honor-stat" style="color: var(--accent-blue);">${a.pickRate} i/h</span>
+      </li>
+    `).join('') || '<li>No data</li>';
+  }
+
+  if (elAcc) {
+    elAcc.innerHTML = huddle.honorRoll.accuracyLeaders.map((a, i) => `
+      <li class="huddle-honor-row">
+        <span class="huddle-honor-name">${i + 1}. ${a.name}</span>
+        <span class="huddle-honor-stat" style="color: var(--accent-emerald);">${a.ftprPct}%</span>
+      </li>
+    `).join('') || '<li>No data</li>';
+  }
+
+  if (elCons) {
+    elCons.innerHTML = huddle.honorRoll.consistencyLeaders.map((a, i) => `
+      <li class="huddle-honor-row">
+        <span class="huddle-honor-name">${i + 1}. ${a.name}</span>
+        <span class="huddle-honor-stat" style="color: var(--accent-cyan);">${a.consistency?.score || 0}/100</span>
+      </li>
+    `).join('') || '<li>No data</li>';
+  }
+
+  // 5. Shift Coaching Priorities
+  const elFocus = document.getElementById('huddleFocusGrid');
+  if (elFocus) {
+    elFocus.innerHTML = huddle.shiftFocus.map(f => `
+      <div class="huddle-focus-card" style="--focus-accent: ${f.color};">
+        <div class="huddle-focus-title" style="display: flex; align-items: center; gap: 0.4rem;">
+          <i data-lucide="${f.icon}" style="width: 15px; height: 15px; color: ${f.color};"></i>
+          <span>${f.title}</span>
+        </div>
+        <div class="huddle-focus-desc">${f.desc}</div>
+      </div>
+    `).join('');
+  }
+
+  // 6. Peer Mentor & Speed Calibration Pairings
+  const elPairings = document.getElementById('huddlePairingsList');
+  if (elPairings) {
+    elPairings.innerHTML = huddle.peerPairings.map(p => `
+      <div class="huddle-pairing-card">
+        <div class="huddle-pairing-lead-row">
+          <div class="huddle-pairing-names">
+            <span style="color: var(--accent-emerald);">★ ${p.mentor}</span>
+            <span style="color: var(--text-dim); margin: 0 4px;">paired with</span>
+            <span style="color: var(--accent-cyan);">${p.mentee}</span>
+          </div>
+          <span class="badge" style="background: rgba(6, 182, 212, 0.12); color: var(--accent-cyan); font-size: 0.72rem;">${p.topic}</span>
+        </div>
+        <div class="huddle-pairing-focus">${p.rationale}</div>
+      </div>
+    `).join('');
+  }
+
+  if (window.lucide) window.lucide.createIcons();
 }
 
 function renderHeatmap() {

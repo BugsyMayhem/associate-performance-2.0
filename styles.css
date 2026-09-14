@@ -2481,5 +2481,600 @@ body {
   color: #BAE6FD;
 }
 
+/* ==========================================================================
+   ROLE FILTER & METRIC TOGGLE BUTTONS
+   ========================================================================== */
+.metric-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--bg-secondary);
+  padding: 0.25rem 0.35rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--bg-glass-border);
+}
 
+.toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+  white-space: nowrap;
+}
 
+.toggle-btn:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.toggle-btn.active {
+  background: var(--bg-card);
+  color: #FFFFFF;
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.25);
+  font-weight: 700;
+}
+
+.exec-role-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--bg-glass-border);
+  border-radius: var(--radius-lg);
+  padding: 0.75rem 1.25rem;
+  margin-bottom: 1.25rem;
+  box-shadow: var(--shadow-card);
+  flex-wrap: wrap;
+  gap: 0.85rem;
+}
+
+.exec-role-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.exec-role-stats {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  flex-wrap: wrap;
+}
+
+.role-count-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 2px 7px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.72rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--bg-glass-border);
+}
+
+/* ==========================================================================
+   MODULE 2 & 3: CONSISTENCY & DWELL TIME BADGES
+   ========================================================================== */
+
+.badge-consistency-anchor {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10B981;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  font-weight: 700;
+}
+
+.badge-consistency-mod {
+  background: rgba(245, 158, 11, 0.15);
+  color: #F59E0B;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  font-weight: 700;
+}
+
+.badge-consistency-vol {
+  background: rgba(244, 63, 94, 0.15);
+  color: #F43F5E;
+  border: 1px solid rgba(244, 63, 94, 0.35);
+  font-weight: 700;
+}
+
+.badge-consistency-prov {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94A3B8;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  font-weight: 600;
+}
+
+.badge-dwell-optimal {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10B981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  font-weight: 700;
+}
+
+.badge-dwell-mod {
+  background: rgba(245, 158, 11, 0.12);
+  color: #F59E0B;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  font-weight: 700;
+}
+
+.badge-dwell-high {
+  background: rgba(244, 63, 94, 0.12);
+  color: #F43F5E;
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  font-weight: 700;
+}
+
+.badge-dwell-none {
+  background: rgba(148, 163, 184, 0.1);
+  color: #94A3B8;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.roster-checkbox {
+  cursor: pointer;
+  accent-color: var(--accent-purple);
+  width: 15px;
+  height: 15px;
+}
+
+.roster-row-selected {
+  background: rgba(139, 92, 246, 0.08) !important;
+}
+
+/* ==========================================================================
+   MODULE 5: HEAD-TO-HEAD ASSOCIATE COMPARISON MODAL
+   ========================================================================== */
+
+.compare-chips-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid var(--bg-glass-border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.compare-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: var(--radius-full);
+  font-size: 0.8rem;
+  font-weight: 700;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.compare-chip-remove {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  opacity: 0.7;
+}
+
+.compare-chip-remove:hover {
+  opacity: 1;
+}
+
+.compare-visuals-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+@media (max-width: 900px) {
+  .compare-visuals-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.compare-data-table th,
+.compare-data-table td {
+  padding: 0.75rem 1rem;
+  text-align: center;
+}
+
+.compare-data-table th:first-child,
+.compare-data-table td:first-child {
+  text-align: left;
+  font-weight: 700;
+}
+
+.compare-metric-row-title {
+  color: var(--text-main);
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.compare-metric-winner {
+  color: var(--accent-emerald);
+  font-weight: 800;
+  background: rgba(16, 185, 129, 0.08);
+  border-radius: 4px;
+}
+
+/* ==========================================================================
+   MODULE 6: PRE-SHIFT HUDDLE PRINTABLE CARD & MODAL STYLES
+   ========================================================================== */
+
+.huddle-print-container {
+  background: var(--bg-card);
+  border: 1px solid var(--bg-glass-border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  box-shadow: var(--shadow-card);
+}
+
+.huddle-top-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 2px solid var(--bg-glass-border);
+  padding-bottom: 0.85rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.huddle-heading {
+  font-size: 1.35rem;
+  font-weight: 800;
+  margin: 0.2rem 0 0;
+  color: var(--text-main);
+  letter-spacing: -0.02em;
+}
+
+.huddle-date-badge {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.huddle-scope-info {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.huddle-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.huddle-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--accent-cyan);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.huddle-section-title i {
+  width: 15px;
+  height: 15px;
+}
+
+.huddle-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.65rem;
+}
+
+@media (max-width: 768px) {
+  .huddle-kpi-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.huddle-kpi-item {
+  background: var(--bg-secondary);
+  border: 1px solid var(--bg-glass-border);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  text-align: center;
+}
+
+.huddle-kpi-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.huddle-kpi-val {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-main);
+  font-family: var(--font-mono);
+}
+
+.huddle-kpi-sub {
+  font-size: 0.68rem;
+  color: var(--accent-emerald);
+  font-weight: 600;
+}
+
+.huddle-forecast-box {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(59, 130, 246, 0.08));
+  border: 1px solid rgba(6, 182, 212, 0.25);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 1rem;
+  font-size: 0.84rem;
+  color: var(--text-main);
+  line-height: 1.45;
+}
+
+.huddle-honor-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+@media (max-width: 768px) {
+  .huddle-honor-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.huddle-honor-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--bg-glass-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.huddle-honor-header {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-bottom: 1px solid var(--bg-glass-border);
+}
+
+.huddle-honor-header.speed-honor {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--accent-blue);
+}
+
+.huddle-honor-header.accuracy-honor {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-emerald);
+}
+
+.huddle-honor-header.consistency-honor {
+  background: rgba(6, 182, 212, 0.15);
+  color: var(--accent-cyan);
+}
+
+.huddle-honor-list {
+  list-style: none;
+  padding: 0.5rem 0.75rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.huddle-honor-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+}
+
+.huddle-honor-name {
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.huddle-honor-stat {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.78rem;
+}
+
+.huddle-focus-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+@media (max-width: 768px) {
+  .huddle-focus-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.huddle-focus-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--bg-glass-border);
+  border-left: 3.5px solid var(--focus-accent, var(--accent-cyan));
+  border-radius: var(--radius-sm);
+  padding: 0.75rem;
+}
+
+.huddle-focus-title {
+  font-size: 0.84rem;
+  font-weight: 800;
+  color: var(--text-main);
+  margin-bottom: 0.25rem;
+}
+
+.huddle-focus-desc {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.huddle-pairings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.huddle-pairing-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--bg-glass-border);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.huddle-pairing-lead-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+}
+
+.huddle-pairing-names {
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.huddle-pairing-focus {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.huddle-print-footer {
+  border-top: 1px dashed var(--bg-glass-border);
+  padding-top: 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+/* ==========================================================================
+   PRINT MEDIA RULES (PERFECT 1-PAGE HUDDLE CARD)
+   ========================================================================== */
+
+@media print {
+  body {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+  }
+
+  .navbar,
+  .tab-bar,
+  .main-container,
+  .huddle-modal-header,
+  #modalAssociate360,
+  #modalUpload,
+  #modalGlossary,
+  #modalVisualPopout,
+  #modalAssociateComparison {
+    display: none !important;
+  }
+
+  #modalPreShiftHuddle {
+    position: static !important;
+    display: block !important;
+    background: #FFFFFF !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  #modalPreShiftHuddle .modal-content {
+    background: #FFFFFF !important;
+    border: none !important;
+    box-shadow: none !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .huddle-print-container {
+    background: #FFFFFF !important;
+    border: 1px solid #E2E8F0 !important;
+    color: #0F172A !important;
+    padding: 12px !important;
+    gap: 8px !important;
+    box-shadow: none !important;
+    page-break-inside: avoid !important;
+  }
+
+  .huddle-heading {
+    color: #0F172A !important;
+    font-size: 1.15rem !important;
+  }
+
+  .huddle-kpi-item,
+  .huddle-honor-card,
+  .huddle-focus-card,
+  .huddle-pairing-card,
+  .huddle-forecast-box {
+    background: #F8FAFC !important;
+    border: 1px solid #CBD5E1 !important;
+    color: #0F172A !important;
+  }
+
+  .huddle-kpi-val,
+  .huddle-honor-name,
+  .huddle-focus-title,
+  .huddle-pairing-names {
+    color: #0F172A !important;
+  }
+
+  .huddle-honor-header.speed-honor,
+  .huddle-honor-header.accuracy-honor,
+  .huddle-honor-header.consistency-honor {
+    background: #E2E8F0 !important;
+    color: #0F172A !important;
+  }
+
+  .huddle-section-title {
+    color: #1E293B !important;
+    font-size: 0.8rem !important;
+  }
+}

@@ -419,8 +419,205 @@ export function getWeeklyTrends(dataset) {
   });
 }
 
+export function calculateAssociateConsistency(assocDailyRows) {
+  if (!assocDailyRows || assocDailyRows.length === 0) {
+    return {
+      score: 100,
+      tier: 'provisional',
+      label: 'Provisional (0 Shifts)',
+      tierName: 'Provisional',
+      badgeClass: 'badge-consistency-prov',
+      color: '#94A3B8',
+      icon: 'help-circle',
+      speedStdDev: 0,
+      ftprStdDev: 0,
+      minSpeed: 0,
+      maxSpeed: 0,
+      speedSpread: 0,
+      minFTPR: 0,
+      maxFTPR: 0,
+      shiftsAnalyzed: 0,
+      description: 'No shift history in selected window'
+    };
+  }
+
+  const validRows = assocDailyRows.filter(r => (r.ftpExpected > 0 || r.pickHours > 0 || r.pickedAsReq > 0));
+  if (validRows.length <= 1) {
+    const single = validRows[0] || assocDailyRows[0];
+    const sRate = single.pickHours > 0 ? single.ftpExpected / single.pickHours : (single.pickRate || 0);
+    const fRate = single.ftpExpected > 0 ? (single.ftpActual / single.ftpExpected) * 100 : ((single.ftpr || 0) * 100);
+    return {
+      score: 95,
+      tier: 'provisional',
+      label: 'Provisional (1 Shift)',
+      tierName: 'Provisional',
+      badgeClass: 'badge-consistency-prov',
+      color: '#94A3B8',
+      icon: 'shield-check',
+      speedStdDev: 0,
+      ftprStdDev: 0,
+      minSpeed: parseFloat(sRate.toFixed(1)),
+      maxSpeed: parseFloat(sRate.toFixed(1)),
+      speedSpread: 0,
+      minFTPR: parseFloat(fRate.toFixed(1)),
+      maxFTPR: parseFloat(fRate.toFixed(1)),
+      shiftsAnalyzed: 1,
+      description: 'Single shift evaluated (baseline established)'
+    };
+  }
+
+  const speeds = [];
+  const ftprs = [];
+
+  validRows.forEach(r => {
+    const s = r.pickHours > 0 ? (r.ftpExpected / r.pickHours) : (r.pickRate || 0);
+    const f = r.ftpExpected > 0 ? ((r.ftpActual / r.ftpExpected) * 100) : ((r.ftpr || 0) * 100);
+    if (s > 0) speeds.push(s);
+    if (f > 0) ftprs.push(f);
+  });
+
+  const nSpeeds = speeds.length || 1;
+  const avgSpeed = speeds.reduce((a, b) => a + b, 0) / nSpeeds;
+  const speedVariance = speeds.reduce((sum, s) => sum + Math.pow(s - avgSpeed, 2), 0) / nSpeeds;
+  const speedStdDev = Math.sqrt(speedVariance);
+
+  const nFtprs = ftprs.length || 1;
+  const avgFtpr = ftprs.reduce((a, b) => a + b, 0) / nFtprs;
+  const ftprVariance = ftprs.reduce((sum, f) => sum + Math.pow(f - avgFtpr, 2), 0) / nFtprs;
+  const ftprStdDev = Math.sqrt(ftprVariance);
+
+  const minSpeed = speeds.length > 0 ? Math.min(...speeds) : 0;
+  const maxSpeed = speeds.length > 0 ? Math.max(...speeds) : 0;
+  const speedSpread = maxSpeed - minSpeed;
+
+  const minFtpr = ftprs.length > 0 ? Math.min(...ftprs) : 0;
+  const maxFtpr = ftprs.length > 0 ? Math.max(...ftprs) : 0;
+
+  // Formula: 100 - (speed standard dev * 2.0 + ftpr standard dev * 2.2)
+  const penalty = (speedStdDev * 2.0) + (ftprStdDev * 2.2);
+  const score = Math.max(0, Math.min(100, Math.round(100 - penalty)));
+
+  let tier = 'anchor';
+  let label = 'Rock-Solid Anchor';
+  let badgeClass = 'badge-consistency-anchor';
+  let color = '#10B981';
+  let icon = 'anchor';
+  let desc = `High day-to-day stability (±${speedStdDev.toFixed(1)} i/h variance)`;
+
+  if (score < 65 || speedStdDev >= 16) {
+    tier = 'volatile';
+    label = 'High Volatility';
+    badgeClass = 'badge-consistency-vol';
+    color = '#F43F5E';
+    icon = 'trending-down';
+    desc = `Wide performance swings (spread: ${minSpeed.toFixed(0)} to ${maxSpeed.toFixed(0)} i/h)`;
+  } else if (score < 85 || speedStdDev >= 9) {
+    tier = 'moderate';
+    label = 'Moderate Fluctuation';
+    badgeClass = 'badge-consistency-mod';
+    color = '#F59E0B';
+    icon = 'activity';
+    desc = `Normal day-to-day variance (±${speedStdDev.toFixed(1)} i/h variance)`;
+  }
+
+  return {
+    score,
+    tier,
+    label,
+    tierName: label,
+    badgeClass,
+    color,
+    icon,
+    speedStdDev: parseFloat(speedStdDev.toFixed(1)),
+    ftprStdDev: parseFloat(ftprStdDev.toFixed(1)),
+    minSpeed: parseFloat(minSpeed.toFixed(1)),
+    maxSpeed: parseFloat(maxSpeed.toFixed(1)),
+    speedSpread: parseFloat(speedSpread.toFixed(1)),
+    minFTPR: parseFloat(minFtpr.toFixed(1)),
+    maxFTPR: parseFloat(maxFtpr.toFixed(1)),
+    shiftsAnalyzed: validRows.length,
+    description: desc
+  };
+}
+
+export function calculateDwellTimeAudit(assocDailyRows, shiftHours, pickHours, totalPicked) {
+  if (!shiftHours || shiftHours <= 0) {
+    return {
+      hasSchedule: false,
+      shiftHours: 0,
+      pickHours: parseFloat((pickHours || 0).toFixed(1)),
+      nonPickHours: 0,
+      breakAllowanceHours: 0,
+      netDwellHours: 0,
+      estimatedWalks: Math.max(1, Math.round((totalPicked || 0) / 65) || 1),
+      turnaroundLatencyMins: null,
+      tier: 'none',
+      label: 'No Schedule',
+      badgeClass: 'badge-dwell-none',
+      color: '#94A3B8',
+      description: 'Upload schedule to calculate dwell turnaround latency'
+    };
+  }
+
+  const sHrs = parseFloat(shiftHours.toFixed(2));
+  const pHrs = parseFloat(pickHours.toFixed(2));
+  const nonPickHours = Math.max(0, sHrs - pHrs);
+
+  // Standard break deductions: 1.0 hr for >= 6h shift, 0.5h for 4-6h shift, 0.25h for <4h
+  let breakAllowanceHours = 0.5;
+  if (sHrs >= 6.0) {
+    breakAllowanceHours = 1.0;
+  } else if (sHrs < 4.0) {
+    breakAllowanceHours = 0.25;
+  }
+
+  const netDwellHours = Math.max(0, nonPickHours - breakAllowanceHours);
+  const netDwellMinutes = netDwellHours * 60;
+  const estimatedWalks = Math.max(1, Math.round(totalPicked / 65) || Math.round(pHrs / 0.75) || 1);
+  const turnaroundLatencyMins = Math.round(netDwellMinutes / estimatedWalks);
+
+  let tier = 'optimal';
+  let label = `Fast (<8m/walk)`;
+  let badgeClass = 'badge-dwell-optimal';
+  let color = '#10B981';
+  let desc = `Minimal transition idle (~${turnaroundLatencyMins}m between walks)`;
+
+  if (turnaroundLatencyMins > 16) {
+    tier = 'high';
+    label = `High Latency (>16m)`;
+    badgeClass = 'badge-dwell-high';
+    color = '#F43F5E';
+    desc = `Significant turnaround lag (~${turnaroundLatencyMins}m between pick walks)`;
+  } else if (turnaroundLatencyMins > 8) {
+    tier = 'moderate';
+    label = `Moderate (${turnaroundLatencyMins}m/walk)`;
+    badgeClass = 'badge-dwell-mod';
+    color = '#F59E0B';
+    desc = `Standard cart staging turnaround (~${turnaroundLatencyMins}m between walks)`;
+  }
+
+  return {
+    hasSchedule: true,
+    shiftHours: parseFloat(sHrs.toFixed(1)),
+    pickHours: parseFloat(pHrs.toFixed(1)),
+    nonPickHours: parseFloat(nonPickHours.toFixed(1)),
+    breakAllowanceHours: breakAllowanceHours,
+    netDwellHours: parseFloat(netDwellHours.toFixed(1)),
+    nonPickDwellHours: parseFloat(netDwellHours.toFixed(1)),
+    estimatedWalks: estimatedWalks,
+    estimatedPickWalks: estimatedWalks,
+    turnaroundLatencyMins: turnaroundLatencyMins,
+    tier: tier,
+    label: label,
+    badgeClass: badgeClass,
+    color: color,
+    description: desc
+  };
+}
+
 export function getAssociateAggregates(rows) {
   const assocMap = {};
+  const assocRowsMap = {};
 
   rows.forEach(r => {
     if (!r.associate) return;
@@ -438,6 +635,7 @@ export function getAssociateAggregates(rows) {
         daysCount: 0,
         weeksSet: new Set()
       };
+      assocRowsMap[name] = [];
     }
     assocMap[name].ftpExpected += r.ftpExpected || 0;
     assocMap[name].ftpActual += r.ftpActual || 0;
@@ -448,6 +646,7 @@ export function getAssociateAggregates(rows) {
     if (r.shiftHours) assocMap[name].shiftHours += r.shiftHours;
     assocMap[name].daysCount += 1;
     if (r.week) assocMap[name].weeksSet.add(r.week);
+    assocRowsMap[name].push(r);
   });
 
   return Object.values(assocMap).map(a => {
@@ -461,6 +660,10 @@ export function getAssociateAggregates(rows) {
     const nonPickHours = Math.max(0, a.shiftHours - a.pickHours);
     const utilTier = classifyUtilization(utilization);
 
+    const dailyRows = assocRowsMap[a.name] || [];
+    const consistency = calculateAssociateConsistency(dailyRows);
+    const dwellAudit = calculateDwellTimeAudit(dailyRows, a.shiftHours, a.pickHours, totalPicked);
+
     return {
       ...a,
       totalPicked: totalPicked,
@@ -472,7 +675,9 @@ export function getAssociateAggregates(rows) {
       nonPickHours: parseFloat(nonPickHours.toFixed(1)),
       utilTier: utilTier,
       weeksActive: a.weeksSet.size,
-      quadrant: quad
+      quadrant: quad,
+      consistency: consistency,
+      dwellAudit: dwellAudit
     };
   });
 }
@@ -1022,5 +1227,250 @@ export function generateCustomDataFeedback({ dataset, associateName, startDate, 
     dailyShifts: dailyShifts,
     weeklyTrend: weeklyTrend,
     dailyTrend: dailyTrend
+  };
+}
+
+export function getMultiAssociateComparison(dataset, associateNames, { startDate = null, endDate = null, startWeek = null, endWeek = null } = {}) {
+  if (!dataset || !associateNames || associateNames.length === 0) return null;
+
+  const filteredDataset = filterDataset(dataset, { startDate, endDate, startWeek, endWeek });
+
+  const associatesData = [];
+  const palette = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
+
+  associateNames.forEach((name, index) => {
+    const assocRows = filteredDataset.filter(r => r.associate === name);
+    if (assocRows.length === 0) return;
+
+    const agg = getAssociateAggregates(assocRows)[0];
+    if (!agg) return;
+
+    const dailyRows = assocRows.filter(r => !r.isTotal && r.day).sort((a, b) => {
+      const d1 = parseDateToISO(a.day) || '';
+      const d2 = parseDateToISO(b.day) || '';
+      return d1.localeCompare(d2);
+    });
+
+    associatesData.push({
+      name: name,
+      color: palette[index % palette.length],
+      metrics: agg,
+      quadrant: agg.quadrant,
+      utilTier: agg.utilTier,
+      pickRate: agg.pickRate,
+      ftprPct: agg.ftprPct,
+      shiftPPH: agg.shiftPPH,
+      utilization: agg.utilization,
+      nonPickHours: agg.nonPickHours,
+      totalPicked: agg.totalPicked,
+      substitutions: agg.substitutions,
+      nilPicks: agg.nilPicks,
+      daysActive: dailyRows.length,
+      dailyRows: dailyRows,
+      consistency: agg.consistency,
+      dwellAudit: agg.dwellAudit
+    });
+  });
+
+  if (associatesData.length === 0) return null;
+
+  // Build unified timeLabels & daily speeds
+  const allDatesSet = new Set();
+  associatesData.forEach(a => {
+    a.dailyRows.forEach(dr => {
+      if (dr.day) {
+        const iso = parseDateToISO(dr.day);
+        if (iso) allDatesSet.add(iso);
+      }
+    });
+  });
+  const timeLabels = Array.from(allDatesSet).sort();
+
+  associatesData.forEach(a => {
+    const dayMap = {};
+    a.dailyRows.forEach(dr => {
+      const iso = parseDateToISO(dr.day);
+      if (iso) {
+        dayMap[iso] = dr.pickHours > 0 ? parseFloat((dr.ftpExpected / dr.pickHours).toFixed(1)) : (dr.pickRate || 0);
+      }
+    });
+    a.dailySpeeds = timeLabels.map(d => dayMap[d] !== undefined ? dayMap[d] : null);
+  });
+
+  // Radar 5-axis normalized data (0 to 100 scale)
+  const radarLabels = ['Active Speed (IPH)', 'True Shift PPH', 'FTPR Accuracy', 'Shift Utilization', 'Consistency Score'];
+
+  associatesData.forEach(a => {
+    const normSpeed = Math.min(100, Math.max(10, Math.round((a.pickRate / 115) * 100)));
+    const normPPH = a.shiftPPH > 0 ? Math.min(100, Math.max(10, Math.round((a.shiftPPH / 85) * 100))) : 50;
+    const normFTPR = Math.min(100, Math.max(10, Math.round(((parseFloat(a.ftprPct) - 85) / 14) * 100)));
+    const normUtil = a.metrics.shiftHours > 0 ? Math.min(100, Math.max(10, Math.round(a.utilization))) : 50;
+    const normCons = a.consistency?.score || 80;
+    a.radarScores = [normSpeed, normPPH, normFTPR, normUtil, normCons];
+  });
+
+  const radarDatasets = associatesData.map(a => {
+    return {
+      label: a.name,
+      data: a.radarScores,
+      rawValues: [
+        `${a.pickRate} i/h`,
+        a.shiftPPH > 0 ? `${a.shiftPPH} PPH` : '--',
+        `${a.ftprPct}%`,
+        a.metrics.shiftHours > 0 ? `${a.utilization}%` : '--%',
+        `${a.consistency?.score || 100}/100`
+      ],
+      backgroundColor: a.color + '26',
+      borderColor: a.color,
+      borderWidth: 2,
+      pointBackgroundColor: a.color,
+      pointBorderColor: '#fff',
+      pointHoverBackgroundColor: '#fff',
+      pointHoverBorderColor: a.color,
+      pointRadius: 4
+    };
+  });
+
+  return {
+    associates: associatesData,
+    radarLabels: radarLabels,
+    radarDatasets: radarDatasets,
+    timeLabels: timeLabels.map(iso => {
+      const parts = iso.split('-');
+      return parts.length === 3 ? `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}` : iso;
+    })
+  };
+}
+
+export function generatePreShiftHuddleData(dataset, { startDate = null, endDate = null, startWeek = null, endWeek = null } = {}) {
+  const filtered = filterDataset(dataset, { startDate, endDate, startWeek, endWeek });
+  const storeKPIs = getStoreKPIs(filtered);
+  const associates = getAssociateAggregates(filtered);
+  const heatmapData = getDayOfWeekHeatmap(filtered);
+
+  // 1. Top Performers
+  const speedLeaders = [...associates]
+    .filter(a => a.totalPicked >= 50)
+    .sort((a, b) => b.pickRate - a.pickRate)
+    .slice(0, 3);
+
+  const accuracyLeaders = [...associates]
+    .filter(a => a.totalPicked >= 50)
+    .sort((a, b) => b.ftpr - a.ftpr)
+    .slice(0, 3);
+
+  const consistencyLeaders = [...associates]
+    .filter(a => a.daysCount >= 2 && a.totalPicked >= 50)
+    .sort((a, b) => (b.consistency?.score || 0) - (a.consistency?.score || 0))
+    .slice(0, 3);
+
+  // 2. Today's Day-of-Week Load Outlook & Workload Forecast
+  const todayDate = new Date();
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const currentDayName = dayNames[todayDate.getDay()];
+  const currentDayStats = heatmapData.days.find(d => d.day === currentDayName) || heatmapData.days[0];
+
+  const dailyAvgVolume = currentDayStats && currentDayStats.totalExpected > 0 
+    ? Math.round(currentDayStats.totalExpected / Math.max(1, heatmapData.weeks.length))
+    : Math.round((storeKPIs.totalExpected || 10000) / Math.max(1, (storeKPIs.activeDaysCount || 7)));
+
+  const projectedVolume = dailyAvgVolume;
+  const storeSpeed = parseFloat(storeKPIs.pickRate) || 80.0;
+  const estimatedPickHoursNeeded = parseFloat((projectedVolume / storeSpeed).toFixed(1));
+  const recommendedPrimaryPickers = Math.max(2, Math.round(estimatedPickHoursNeeded / 5.5));
+
+  const forecast = {
+    projectedVolume: projectedVolume,
+    dailyAvgVolume: dailyAvgVolume,
+    estimatedPickHoursNeeded: estimatedPickHoursNeeded,
+    recommendedPrimaryPickers: recommendedPrimaryPickers
+  };
+
+  // 3. Shift Coaching Focus of the Day
+  const coachingFocusItems = [];
+  if (storeKPIs.ftpr < 0.94) {
+    coachingFocusItems.push({
+      tag: 'Accuracy Priority',
+      icon: 'target',
+      color: '#F59E0B',
+      title: 'Top-Stock & Shelf Tag Verification',
+      desc: `Store FTPR is currently ${storeKPIs.ftprPct}% (Target: 94.0%+). Remind all pickers to look 2 feet left/right and check top-stock before subbing or nil-picking.`
+    });
+  } else {
+    coachingFocusItems.push({
+      tag: 'Accuracy Win',
+      icon: 'check-circle',
+      color: '#10B981',
+      title: 'Maintain 94%+ First Time Pick Accuracy',
+      desc: `Store is excelling at ${storeKPIs.ftprPct}% FTPR! Keep scanning accurate barcodes on first pass to protect customer satisfaction.`
+    });
+  }
+
+  if (parseFloat(storeKPIs.pickRate) < 80.0) {
+    coachingFocusItems.push({
+      tag: 'Pace Acceleration',
+      icon: 'zap',
+      color: '#3B82F6',
+      title: 'Cart Prep & Pick-Path Velocity',
+      desc: `Store average active pace is ${storeKPIs.pickRate} i/h. Prep 8 totes with bags prior to starting walk to hit the 80.0 i/h target.`
+    });
+  } else {
+    coachingFocusItems.push({
+      tag: 'Velocity Leader',
+      icon: 'sparkles',
+      color: '#8B5CF6',
+      title: 'Maintain 80+ Items/Hr Velocity',
+      desc: `Strong team pace at ${storeKPIs.pickRate} i/h. Focus on seamless cart drop-offs at staging to keep backroom flow clear.`
+    });
+  }
+
+  // 4. Suggested Peer Mentorship Pairings
+  const speedDemons = associates.filter(a => a.quadrant.id === 'speed-demon').slice(0, 2);
+  const qualityChamps = associates.filter(a => a.quadrant.id === 'quality-champion').slice(0, 2);
+  const pacesetters = associates.filter(a => a.quadrant.id === 'pacesetter').slice(0, 2);
+  const oppZone = associates.filter(a => a.quadrant.id === 'opportunity').slice(0, 2);
+
+  const suggestedPairings = [];
+  if (speedDemons.length > 0 && qualityChamps.length > 0) {
+    suggestedPairings.push({
+      mentor: speedDemons[0].name,
+      mentorRole: `Speed Mentor (⚡ ${speedDemons[0].pickRate} i/h)`,
+      mentee: qualityChamps[0].name,
+      menteeRole: `Accuracy Mentor (🎯 ${qualityChamps[0].ftprPct}%)`,
+      topic: 'Walk Velocity & Top-Stock Checking',
+      rationale: 'Pairing speed champion with quality leader to cross-calibrate aisle pathing and inventory verification.'
+    });
+  }
+  if (pacesetters.length > 0 && oppZone.length > 0) {
+    suggestedPairings.push({
+      mentor: pacesetters[0].name,
+      mentorRole: `Pacesetter Role Model (🌟 ${pacesetters[0].pickRate} i/h, ${pacesetters[0].ftprPct}%)`,
+      mentee: oppZone[0].name,
+      menteeRole: `Growth Focus (🛠️ ${oppZone[0].pickRate} i/h)`,
+      topic: 'Tote Staging & Multi-Bagging Flow',
+      rationale: 'Pairing top-tier pacesetter with growth candidate to shadow bag prep and cart replenishment.'
+    });
+  }
+
+  return {
+    todayDate: todayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }),
+    generatedDate: todayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }),
+    currentDayName: currentDayName,
+    currentDayStats: currentDayStats,
+    storeKPIs: storeKPIs,
+    baselineKPIs: storeKPIs,
+    forecast: forecast,
+    honorRoll: {
+      speedLeaders: speedLeaders,
+      accuracyLeaders: accuracyLeaders,
+      consistencyLeaders: consistencyLeaders
+    },
+    speedLeaders: speedLeaders,
+    accuracyLeaders: accuracyLeaders,
+    consistencyLeaders: consistencyLeaders,
+    shiftFocus: coachingFocusItems,
+    coachingFocusItems: coachingFocusItems,
+    peerPairings: suggestedPairings,
+    suggestedPairings: suggestedPairings
   };
 }
