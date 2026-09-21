@@ -4792,8 +4792,9 @@ async function processFileList(fileObjects) {
 
   // 2. Apply all schedules to activeDataset
   const schedCount = Object.keys(aggregatedScheduleMap).length;
+  let matched = 0;
   if (schedCount > 0) {
-    const matched = applyScheduleMapToDataset(activeDataset, aggregatedScheduleMap);
+    matched = applyScheduleMapToDataset(activeDataset, aggregatedScheduleMap);
     logMessage(`Matched schedules across ${matched} associate performance records.`);
   }
 
@@ -4806,9 +4807,13 @@ async function processFileList(fileObjects) {
   if (statusText) statusText.textContent = 'Upload complete! Syncing cloud...';
   if (progressBar) progressBar.style.width = '100%';
 
-  if (allNewPerformanceRecords.length > 0) {
-    logMessage('Syncing imported records to Supabase cloud...');
-    insertPerformanceBatchToSupabase(allNewPerformanceRecords).then(ok => {
+  const recordsToSync = allNewPerformanceRecords.length > 0
+    ? allNewPerformanceRecords
+    : (matched > 0 ? activeDataset.filter(r => r.shiftHours && r.shiftHours > 0) : []);
+
+  if (recordsToSync.length > 0) {
+    logMessage(`Syncing ${recordsToSync.length} records to Supabase cloud...`);
+    insertPerformanceBatchToSupabase(recordsToSync).then(ok => {
       const cloudStatusText = document.getElementById('cloudStatusText');
       if (cloudStatusText && ok) {
         cloudStatusText.textContent = `Cloud Synced (${activeDataset.length.toLocaleString()} rows)`;
@@ -4821,7 +4826,7 @@ async function processFileList(fileObjects) {
     document.getElementById('modalUpload').classList.remove('active');
     if (progressContainer) progressContainer.style.display = 'none';
     if (progressBar) progressBar.style.width = '0%';
-    alert(`Batch Import Complete!\n• ${allNewPerformanceRecords.length} Performance records added\n• Schedules applied across ${activeDataset.length} rows`);
+    alert(`Batch Import Complete!\n• ${allNewPerformanceRecords.length} Performance records added\n• Schedules applied across ${matched > 0 ? matched : activeDataset.length} rows`);
   }, 1200);
 }
 

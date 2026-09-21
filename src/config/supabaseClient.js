@@ -225,28 +225,38 @@ export async function deleteCoachingNoteFromSupabase({ id, associateName, startD
  * Inserts or upserts performance records into Supabase in chunks.
  */
 export async function insertPerformanceBatchToSupabase(records) {
+  return upsertPerformanceBatchToSupabase(records);
+}
+
+export async function upsertPerformanceBatchToSupabase(records) {
   try {
-    const formatted = records.map(r => ({
-      store: r.store || '1012',
-      week: parseInt(r.week, 10) || 0,
-      associate: r.associate || '',
-      day: r.day || '',
-      iso_date: r.iso_date || null,
-      is_total: Boolean(r.isTotal),
-      ftpr: parseFloat(r.ftpr || 0),
-      ftp_expected: parseInt(r.ftpExpected || 0),
-      ftp_actual: parseInt(r.ftpActual || 0),
-      pick_rate: parseFloat(r.pickRate || 0),
-      pick_hours: parseFloat(r.pickHours || 0),
-      picked_as_req: parseInt(r.pickedAsReq || 0),
-      substitutions: parseInt(r.substitutions || 0),
-      overrides: parseInt(r.overrides || 0),
-      nil_picks: parseInt(r.nilPicks || 0),
-      shift_hours: parseFloat(r.shiftHours || 0),
-      shift_pph: parseFloat(r.shiftPPH || 0),
-      utilization: parseFloat(r.utilization || 0),
-      non_pick_hours: parseFloat(r.nonPickHours || 0)
-    }));
+    const formatted = records.map(r => {
+      const row = {
+        store: r.store || '1012',
+        week: parseInt(r.week, 10) || 0,
+        associate: r.associate || '',
+        day: r.day || '',
+        iso_date: r.iso_date || null,
+        is_total: Boolean(r.isTotal),
+        ftpr: parseFloat(r.ftpr || 0),
+        ftp_expected: parseInt(r.ftpExpected || 0),
+        ftp_actual: parseInt(r.ftpActual || 0),
+        pick_rate: parseFloat(r.pickRate || 0),
+        pick_hours: parseFloat(r.pickHours || 0),
+        picked_as_req: parseInt(r.pickedAsReq || 0),
+        substitutions: parseInt(r.substitutions || 0),
+        overrides: parseInt(r.overrides || 0),
+        nil_picks: parseInt(r.nilPicks || 0),
+        shift_hours: r.shiftHours !== null && r.shiftHours !== undefined ? parseFloat(r.shiftHours) : 0,
+        shift_pph: r.shiftPPH !== null && r.shiftPPH !== undefined ? parseFloat(r.shiftPPH) : 0,
+        utilization: r.utilization !== null && r.utilization !== undefined ? parseFloat(r.utilization) : 0,
+        non_pick_hours: r.nonPickHours !== null && r.nonPickHours !== undefined ? parseFloat(r.nonPickHours) : 0
+      };
+      if (r.id && typeof r.id === 'number') {
+        row.id = r.id;
+      }
+      return row;
+    });
 
     const client = getSupabase();
     const CHUNK_SIZE = 250;
@@ -254,7 +264,7 @@ export async function insertPerformanceBatchToSupabase(records) {
     for (let i = 0; i < formatted.length; i += CHUNK_SIZE) {
       const chunk = formatted.slice(i, i + CHUNK_SIZE);
       if (client) {
-        const { error } = await client.from('associate_performance').insert(chunk);
+        const { error } = await client.from('associate_performance').upsert(chunk);
         if (error) throw error;
       } else {
         const res = await fetch(`${SUPABASE_URL}/rest/v1/associate_performance`, {
@@ -263,7 +273,7 @@ export async function insertPerformanceBatchToSupabase(records) {
             "apikey": SUPABASE_ANON_KEY,
             "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
             "Content-Type": "application/json",
-            "Prefer": "return=minimal"
+            "Prefer": "resolution=merge-duplicates"
           },
           body: JSON.stringify(chunk)
         });
@@ -272,7 +282,7 @@ export async function insertPerformanceBatchToSupabase(records) {
     }
     return true;
   } catch (err) {
-    console.error('Error inserting records to Supabase:', err);
+    console.error('Error inserting/upserting records to Supabase:', err);
     return false;
   }
 }
