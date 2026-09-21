@@ -141,17 +141,7 @@ export function getDatasetDateBounds(dataset) {
 export function filterDataset(dataset, { week = 'all', startWeek = null, endWeek = null, startDate = null, endDate = null, search = '', quadrant = 'all', utilTier = 'all', scheduledOnly = true } = {}) {
   let filtered = dataset.filter(row => !row.isTotal);
 
-  // Only enforce scheduled-only filter when schedule data has actually been imported.
-  // Check if any row in the filtered scope has shiftHours populated — if none do, skip the filter
-  // so the dashboard doesn't go blank when no schedule has been uploaded yet.
-  if (scheduledOnly) {
-    const hasScheduleData = filtered.some(row => row.shiftHours !== null && row.shiftHours !== undefined && row.shiftHours > 0);
-    if (hasScheduleData) {
-      filtered = filtered.filter(row => row.shiftHours !== null && row.shiftHours !== undefined && row.shiftHours > 0);
-    }
-  }
-
-  // Filter by Week Range / Multi-Week
+  // 1. Filter by Week Range / Multi-Week FIRST
   if (startWeek !== null || endWeek !== null) {
     const sWk = (startWeek !== null && startWeek !== 'all' && startWeek !== '') ? parseInt(startWeek, 10) : -Infinity;
     const eWk = (endWeek !== null && endWeek !== 'all' && endWeek !== '') ? parseInt(endWeek, 10) : Infinity;
@@ -166,7 +156,7 @@ export function filterDataset(dataset, { week = 'all', startWeek = null, endWeek
     }
   }
 
-  // Filter by Custom Date Range (Start Date & End Date)
+  // 2. Filter by Custom Date Range (Start Date & End Date)
   if (startDate || endDate) {
     filtered = filtered.filter(row => {
       if (!row.day) return false;
@@ -176,6 +166,16 @@ export function filterDataset(dataset, { week = 'all', startWeek = null, endWeek
       if (endDate && iso > endDate) return false;
       return true;
     });
+  }
+
+  // 3. Only enforce scheduled-only filter when schedule data has actually been imported for the filtered scope.
+  // Check if any row in the current filtered scope has shiftHours populated — if none do, skip the filter
+  // so the dashboard doesn't go blank when viewing an uploaded week before schedules are imported.
+  if (scheduledOnly) {
+    const hasScheduleData = filtered.some(row => row.shiftHours !== null && row.shiftHours !== undefined && row.shiftHours > 0);
+    if (hasScheduleData) {
+      filtered = filtered.filter(row => row.shiftHours !== null && row.shiftHours !== undefined && row.shiftHours > 0);
+    }
   }
 
   // Filter by Search Query (Associate name or store)
@@ -223,16 +223,20 @@ export function getStoreKPIs(rows) {
       totalExpected: 0,
       totalActual: 0,
       ftpr: 0,
+      ftprPct: '0.00',
       pickHours: 0,
-      pickRate: 0,
+      pickRate: '0.00',
       totalPickedReq: 0,
       substitutions: 0,
+      subPct: '0.00',
       nilPicks: 0,
+      nilPct: '0.00',
       activePickers: 0,
       shiftHours: 0,
-      shiftPPH: 0,
-      utilization: 0,
-      nonPickHours: 0
+      shiftPPH: '0.00',
+      utilization: '0.0',
+      nonPickHours: '0.00',
+      hasScheduleData: false
     };
   }
 
